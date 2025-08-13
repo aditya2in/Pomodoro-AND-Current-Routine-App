@@ -3,8 +3,8 @@
 # -----------------------------------------------------------------------------
 # Configuration Variables
 # -----------------------------------------------------------------------------
-# Base directory for Pomodoro CLI related files
-POMODORO_DIR="$HOME/.config/pomodoro_cli"
+# Base directory for Pomodoro CLI related files (project-local)
+POMODORO_DIR="$(dirname "$(readlink -f "$0")")"
 
 # Main Configuration File
 POMODORO_CONFIG_FILE="$POMODORO_DIR/pomodoro_config.conf"
@@ -24,6 +24,33 @@ if [ ! -f "$POMODORO_CONFIG_FILE" ]; then
     echo "EVENING_LOCK_ENABLED=\"OFF\"" >> "$POMODORO_CONFIG_FILE"
     echo "LOCK_START_TIME_CONFIG=\"1930\"" >> "$POMODORO_CONFIG_FILE"
     echo "LOCK_FREQUENCY_CONFIG=\"10\"" >> "$POMODORO_CONFIG_FILE"
+
+    # Paths (configurable)
+    echo 'STATE_FILE="$POMODORO_DIR/pomodoro_state.json"' >> "$POMODORO_CONFIG_FILE"
+    echo 'DAILY_LOG_FILE="$POMODORO_DIR/pomodoro_daily_log.txt"' >> "$POMODORO_CONFIG_FILE"
+    echo 'LOCK_FILE="$POMODORO_DIR/pomodoro_lock"' >> "$POMODORO_CONFIG_FILE"
+    echo 'DAEMON_PID_FILE="$POMODORO_DIR/pomodoro_daemon.pid"' >> "$POMODORO_CONFIG_FILE"
+    echo 'BREAK_LOCKER_PID_FILE="$POMODORO_DIR/break_locker.pid"' >> "$POMODORO_CONFIG_FILE"
+    echo 'SOUND_FILE="$POMODORO_DIR/sounds/beep.wav"' >> "$POMODORO_CONFIG_FILE"
+    echo 'GET_ROUTINE_SCRIPT="$POMODORO_DIR/RoutineTaskSubTaskScripts/get_current_CategoryAction.sh"' >> "$POMODORO_CONFIG_FILE"
+    echo 'CURRENT_ROUTINE_FILE="$POMODORO_DIR/RoutineTaskSubTaskScripts/current_routine.txt"' >> "$POMODORO_CONFIG_FILE"
+    echo 'LAST_ROUTINE_UPDATE_TIME_FILE="$POMODORO_DIR/last_routine_update.timestamp"' >> "$POMODORO_CONFIG_FILE"
+
+    # Evening enforcement (new)
+    echo 'EVENING_LOCK_ENABLED="ON"' >> "$POMODORO_CONFIG_FILE"
+    echo 'LOCK_START_TIME_CONFIG="1930"' >> "$POMODORO_CONFIG_FILE"
+    echo 'LOCK_FREQUENCY_CONFIG="10"' >> "$POMODORO_CONFIG_FILE"
+    echo 'STRICT_LOCK_ENABLED="ON"' >> "$POMODORO_CONFIG_FILE"
+    echo 'STRICT_LOCK_START_TIME_CONFIG="1945"' >> "$POMODORO_CONFIG_FILE"
+    echo 'STRICT_LOCK_END_TIME_CONFIG="0700"' >> "$POMODORO_CONFIG_FILE"
+    echo 'STRICT_LOCK_FREQUENCY_SEC="1"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_ENFORCEMENT_ENABLED="ON"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_START_TIME="1940"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_END_TIME="1945"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_BEEP_INTERVAL_SEC="1"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC="10"' >> "$POMODORO_CONFIG_FILE"
+    echo 'PRE_SHUTDOWN_SHUTDOWN_TIME="1945"' >> "$POMODORO_CONFIG_FILE"
+    echo 'SHUTDOWN_RETRY_INTERVAL_SEC="60"' >> "$POMODORO_CONFIG_FILE"
 fi
 source "$POMODORO_CONFIG_FILE"
 
@@ -48,30 +75,43 @@ debug_log() {
 # Path to the state file
 
 
-STATE_FILE="$POMODORO_DIR/pomodoro_state.json"
+# Paths can be overridden via config; default to project directory
+STATE_FILE="${STATE_FILE:-"$POMODORO_DIR/pomodoro_state.json"}"
 # Path to the sound file for notifications (ensure you place a WAV or OGG here)
-SOUND_FILE="$POMODORO_DIR/sounds/beep.wav"
+SOUND_FILE="${SOUND_FILE:-"$POMODORO_DIR/sounds/beep.wav"}"
 # Path to the daily session log file
-DAILY_LOG_FILE="$POMODORO_DIR/pomodoro_daily_log.txt"
+DAILY_LOG_FILE="${DAILY_LOG_FILE:-"$POMODORO_DIR/pomodoro_daily_log.txt"}"
 # Lock file to prevent concurrent script execution
-LOCK_FILE="$POMODORO_DIR/pomodoro_lock"
+LOCK_FILE="${LOCK_FILE:-"$POMODORO_DIR/pomodoro_lock"}"
 # PID file for the daemon process
-DAEMON_PID_FILE="$POMODORO_DIR/pomodoro_daemon.pid"
+DAEMON_PID_FILE="${DAEMON_PID_FILE:-"$POMODORO_DIR/pomodoro_daemon.pid"}"
 # PID file for the break locker process
-BREAK_LOCKER_PID_FILE="$POMODORO_DIR/break_locker.pid"
+BREAK_LOCKER_PID_FILE="${BREAK_LOCKER_PID_FILE:-"$POMODORO_DIR/break_locker.pid"}"
 
 # --- NEW: Routine Integration Configuration ---
-GET_ROUTINE_SCRIPT="$HOME/.config/pomodoro_cli/RoutineTaskSubTaskScripts/get_current_CategoryAction.sh" # Updated script name
-CURRENT_ROUTINE_FILE="$HOME/.config/pomodoro_cli/RoutineTaskSubTaskScripts/current_routine.txt"
+GET_ROUTINE_SCRIPT="${GET_ROUTINE_SCRIPT:-"$POMODORO_DIR/RoutineTaskSubTaskScripts/get_current_CategoryAction.sh"}" # Configurable
+CURRENT_ROUTINE_FILE="${CURRENT_ROUTINE_FILE:-"$POMODORO_DIR/RoutineTaskSubTaskScripts/current_routine.txt"}"
 ROUTINE_UPDATE_FREQUENCY_SEC="30" # Run get_current_CategoryAction.sh every 5 minutes (300 seconds)
-LAST_ROUTINE_UPDATE_TIME_FILE="$POMODORO_DIR/last_routine_update.timestamp" # File to store last update timestamp
+LAST_ROUTINE_UPDATE_TIME_FILE="${LAST_ROUTINE_UPDATE_TIME_FILE:-"$POMODORO_DIR/last_routine_update.timestamp"}" # Configurable
 # ----------------------------------------------
 
 # --- NEW: Break Behavior Configuration ---
 
 
 # --- NEW: Evening Lock Configuration ---
-EVENING_LOCK_INTERVAL_SEC=30 # How often to check and potentially re-lock after evening lock time
+# Evening lock and enforcement defaults (can be overridden in config)
+EVENING_LOCK_INTERVAL_SEC=${EVENING_LOCK_INTERVAL_SEC:-30}
+STRICT_LOCK_ENABLED=${STRICT_LOCK_ENABLED:-ON}
+STRICT_LOCK_START_TIME_CONFIG=${STRICT_LOCK_START_TIME_CONFIG:-1945}
+STRICT_LOCK_END_TIME_CONFIG=${STRICT_LOCK_END_TIME_CONFIG:-0700}
+STRICT_LOCK_FREQUENCY_SEC=${STRICT_LOCK_FREQUENCY_SEC:-1}
+PRE_SHUTDOWN_ENFORCEMENT_ENABLED=${PRE_SHUTDOWN_ENFORCEMENT_ENABLED:-ON}
+PRE_SHUTDOWN_START_TIME=${PRE_SHUTDOWN_START_TIME:-1940}
+PRE_SHUTDOWN_END_TIME=${PRE_SHUTDOWN_END_TIME:-1945}
+PRE_SHUTDOWN_BEEP_INTERVAL_SEC=${PRE_SHUTDOWN_BEEP_INTERVAL_SEC:-1}
+PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC=${PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC:-10}
+PRE_SHUTDOWN_SHUTDOWN_TIME=${PRE_SHUTDOWN_SHUTDOWN_TIME:-1945}
+SHUTDOWN_RETRY_INTERVAL_SEC=${SHUTDOWN_RETRY_INTERVAL_SEC:-60}
 # -------------------------------------
 # These variables hold our script's internal state.
 # They are declared globally (without 'local') so they can be accessed by all functions.
@@ -87,6 +127,10 @@ _current_minitask_name="Loading MiniTask..."
 _last_run_date=""
 _obsidian_break_window_address="" # NEW: Stores the address of the Obsidian window opened for the break
 _last_evening_lock_attempt_timestamp=0 # NEW: Timestamp of the last evening lock attempt
+_last_strict_lock_attempt_timestamp=0
+_last_preshutdown_beep_timestamp=0
+_last_preshutdown_notify_timestamp=0
+_last_shutdown_attempt_timestamp=0
 
 
 
@@ -294,20 +338,68 @@ log_session_event() {
     # Create the directory for the log file if it doesn't exist
     mkdir -p "$(dirname "$MARKDOWN_LOG_FILE")" || { echo "Error: Could not create directory for Markdown log file: $(dirname "$MARKDOWN_LOG_FILE")" >&2; return 1; }
 
-    # Check if file exists and is empty or has only a title, then add header and separator
-    if [ ! -f "$MARKDOWN_LOG_FILE" ] || [ ! -s "$MARKDOWN_LOG_FILE" ] || ! grep -q "|---" "$MARKDOWN_LOG_FILE"; then
-        printf "%s\n" "# Pomodoro Session History" >> "$MARKDOWN_LOG_FILE"
-        printf "%s\n" "" >> "$MARKDOWN_LOG_FILE" # Add a blank line for readability
-        printf "%s\n" "| Session_ID | Event_Timestamp | Event_Type | Session_Type | Routine_Name | Planned_Duration_Sec | Actual_Duration_Sec | Remaining_Time_Sec | Status_After_Event | Total_Pomodoros_Today | Current_Cycle_Progress | Notes/Reason |" >> "$MARKDOWN_LOG_FILE"
-        printf "%s\n" "|:----------:|:-----------------:|:----------:|:------------:|:------------:|:--------------------:|:-------------------:|:--------------------:|:------------------:|:---------------------:|:----------------------:|:-------------|" >> "$MARKDOWN_LOG_FILE"
+    # --- New behavior: Maintain a single table with newest rows at the top ---
+    local header_title="# Pomodoro Session History"
+    local header_columns="| Session_ID | Event_Timestamp | Event_Type | Session_Type | Routine_Name | Category_Action | Task | SubTask | MiniTask | Planned_Duration_Sec | Actual_Duration_Sec | Remaining_Time_Sec | Status_After_Event | Total_Pomodoros_Today | Current_Cycle_Progress | Notes/Reason |"
+    local header_separator="|:----------:|:-----------------:|:----------:|:------------:|:------------:|:------------------:|:----:|:-------:|:--------:|:--------------------:|:-------------------:|:--------------------:|:------------------:|:---------------------:|:----------------------:|:-------------|"
+    local old_header_columns="| Session_ID | Event_Timestamp | Event_Type | Session_Type | Routine_Name | Planned_Duration_Sec | Actual_Duration_Sec | Remaining_Time_Sec | Status_After_Event | Total_Pomodoros_Today | Current_Cycle_Progress | Notes/Reason |"
+    local old_header_separator="|:----------:|:-----------------:|:----------:|:------------:|:------------:|:--------------------:|:-------------------:|:--------------------:|:------------------:|:---------------------:|:----------------------:|:-------------|"
+
+    # Compose the new row once
+    local new_row
+    new_row=$(printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+        "${session_id}" "${timestamp}" "${event_type}" "${session_type}" "${routine_name}" \
+        "${_current_category_action}" "${_current_task_name}" "${_current_subtask_name}" "${_current_minitask_name}" \
+        "${planned_duration_sec}" "${actual_duration_sec}" "${remaining_time_sec}" \
+        "${status_after_event}" "${total_pomodoros}" "${cycle_progress}" "${notes_reason}")
+
+    # Write to a temp file and atomically replace the log
+    local tmp_file="${MARKDOWN_LOG_FILE}.tmp"
+    : > "$tmp_file" || { echo "Error: Cannot write to temp file: $tmp_file" >&2; return 1; }
+
+    # Always start with a single header block
+    printf "%s\n\n%s\n%s\n" "$header_title" "$header_columns" "$header_separator" >> "$tmp_file"
+    # Insert newest row right after header
+    printf "%s" "$new_row" >> "$tmp_file"
+
+    # Append existing rows, filtering out any duplicated headers that might exist in the old file
+    if [ -f "$MARKDOWN_LOG_FILE" ]; then
+        awk '
+            function trim(s){ gsub(/^ +| +$/,"",s); return s }
+            function is_header(line){
+                return index(line, "Pomodoro Session History")==1 ||
+                       (index(line, "Session_ID")>0 && index(line, "Event_Timestamp")>0) ||
+                       match(line, /^\|[:\- ]+\|/)
+            }
+            function is_data_row(line){ return match(line, /^\| [0-9]{14} /) }
+            function print_normalized(line,    n,a,i,cols,b){
+                # Split by pipes and trim
+                n = split(line, a, /\|/)
+                cols = 0
+                for (i=2; i<=n-1; i++) { b[++cols] = trim(a[i]) }
+                if (cols == 12) {
+                    # Old format -> expand with 4 empty routine details
+                    printf("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+                           b[1],b[2],b[3],b[4],b[5], "", "", "", "",
+                           b[6],b[7],b[8],b[9],b[10],b[11],b[12])
+                } else if (cols >= 16) {
+                    printf("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+                           b[1],b[2],b[3],b[4],b[5], b[6],b[7],b[8],b[9], b[10],b[11],b[12],b[13],b[14],b[15],b[16])
+                }
+            }
+            {
+                if (is_header($0)) next
+                line=$0
+                # Split any accidental concatenations like "||" into separate rows
+                gsub(/\|[[:space:]]*\|/, "|\n| ", line)
+                n = split(line, arr, /\n/)
+                for (i=1; i<=n; i++) if (is_data_row(arr[i])) print_normalized(arr[i])
+            }
+        ' "$MARKDOWN_LOG_FILE" >> "$tmp_file"
     fi
 
-    # Append the new data row
-    printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n" \
-        "${session_id}" "${timestamp}" "${event_type}" "${session_type}" "${routine_name}" \
-        "${planned_duration_sec}" "${actual_duration_sec}" "${remaining_time_sec}" \
-        "${status_after_event}" "${total_pomodoros}" "${cycle_progress}" "${notes_reason}" >> "$MARKDOWN_LOG_FILE"
-    debug_log "Logged session event to "$MARKDOWN_LOG_FILE": "$event_type" for "$session_type""
+    mv "$tmp_file" "$MARKDOWN_LOG_FILE" || { echo "Error: Failed to replace Markdown log file atomically." >&2; return 1; }
+    debug_log "Logged session event (newest-first) to "$MARKDOWN_LOG_FILE": "$event_type" for "$session_type""
 }
 
 
@@ -1035,6 +1127,158 @@ _evening_lock() {
     fi
 }
 
+# Stronger lock enforcement after STRICT_LOCK_START_TIME_CONFIG until STRICT_LOCK_END_TIME_CONFIG
+_strict_evening_lock_enforcement() {
+    local START="$STRICT_LOCK_START_TIME_CONFIG"
+    local END="$STRICT_LOCK_END_TIME_CONFIG"
+    local NOW=$(date +%H%M)
+    # In-range if now >= start OR now < end (overnight span)
+    if (( NOW >= START || NOW < END )); then
+        local now_ts=$(date +%s)
+        if (( now_ts - _last_strict_lock_attempt_timestamp >= STRICT_LOCK_FREQUENCY_SEC )); then
+            loginctl lock-session
+            _last_strict_lock_attempt_timestamp=$now_ts
+            debug_log "Strict lock enforced at $NOW"
+        fi
+    fi
+}
+
+# Pre-shutdown enforcement: between 19:31 and 19:35 continuous beep+notification, then shutdown at 19:35
+_pre_shutdown_enforcement() {
+    if [ "$PRE_SHUTDOWN_ENFORCEMENT_ENABLED" != "ON" ]; then return; fi
+    local START="$PRE_SHUTDOWN_START_TIME"
+    local END="$PRE_SHUTDOWN_END_TIME"
+    local SHUT_AT="$PRE_SHUTDOWN_SHUTDOWN_TIME"
+    local NOW_HHMM=$(date +%H%M)
+    local now_ts=$(date +%s)
+
+    # Continuous alerts between START and END (exclusive of shutdown moment)
+    if (( NOW_HHMM >= START && NOW_HHMM < END )); then
+        if (( now_ts - _last_preshutdown_beep_timestamp >= PRE_SHUTDOWN_BEEP_INTERVAL_SEC )); then
+            send_notification "Evening Discipline" "Please stop using the computer now (shutdown at ${SHUT_AT:0:2}:${SHUT_AT:2:2})."
+            _last_preshutdown_beep_timestamp=$now_ts
+        fi
+        if (( now_ts - _last_preshutdown_notify_timestamp >= PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC )); then
+            send_notification "Evening Discipline" "Final warning window active (until ${END:0:2}:${END:2:2})."
+            _last_preshutdown_notify_timestamp=$now_ts
+        fi
+    fi
+
+    # Trigger shutdown repeatedly during shutdown window with cooldown
+    # Shutdown window: from SHUT_AT (e.g., 19:45) until STRICT_LOCK_END_TIME_CONFIG (e.g., 07:00 next day)
+    local in_shutdown_window=0
+    if (( NOW_HHMM >= SHUT_AT )); then in_shutdown_window=1; fi
+    if (( NOW_HHMM < STRICT_LOCK_END_TIME_CONFIG )); then in_shutdown_window=1; fi
+
+    if (( in_shutdown_window == 1 )); then
+        if (( now_ts - _last_shutdown_attempt_timestamp >= SHUTDOWN_RETRY_INTERVAL_SEC )); then
+            _last_shutdown_attempt_timestamp=$now_ts
+            debug_log "Triggering shutdown due to evening enforcement at $NOW_HHMM"
+            # Log to markdown and daily log
+            log_session_event \
+                "System_Shutdown" \
+                "Evening_Enforcement" \
+                "0" \
+                "0" \
+                "0" \
+                "Stopped" \
+                "Shutdown initiated by evening enforcement at $NOW_HHMM"
+            echo "[$(date "+%Y-%m-%d %H:%M:%S")] Shutdown initiated by evening enforcement at $NOW_HHMM" >> "$DAILY_LOG_FILE"
+            nohup bash -c 'sleep 1; systemctl poweroff || shutdown -h now' >/dev/null 2>&1 &
+        fi
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Inline Web GUI (Flask) - No extra files/directories required
+# -----------------------------------------------------------------------------
+cmd_web_gui_inline() {
+    echo "Starting Pomodoro CLI Web GUI (inline)..." >&2
+    VENV_PATH="$POMODORO_DIR/venv_pomodoro"
+    if [ ! -d "$VENV_PATH" ]; then
+        python3 -m venv "$VENV_PATH" || { echo "Error: Failed to create venv at $VENV_PATH" >&2; exit 1; }
+    fi
+
+    # Ensure Flask is available in the venv
+    "$VENV_PATH/bin/python" -c 'import flask' 2>/dev/null || "$VENV_PATH/bin/pip" install --quiet Flask || {
+        echo "Error: Failed to install Flask in venv." >&2; exit 1;
+    }
+
+    # Export POMODORO_DIR for the Python process
+    export POMODORO_DIR
+
+    # Launch a minimal Flask app from stdin (no files written)
+    nohup "$VENV_PATH/bin/python" - <<'PY' >/dev/null 2>&1 &
+import os
+import json
+import subprocess
+from flask import Flask, request, redirect
+
+app = Flask(__name__)
+
+BASE_DIR = os.environ.get('POMODORO_DIR') or os.getcwd()
+MANAGER = os.path.join(BASE_DIR, 'pomodoro_manager.sh')
+CONFIG = os.path.join(BASE_DIR, 'pomodoro_config.conf')
+
+def read_status_text():
+    try:
+        res = subprocess.run([MANAGER, 'status'], capture_output=True, text=True, check=True)
+        data = json.loads(res.stdout.strip())
+        return data.get('text', 'Unknown')
+    except Exception as e:
+        return f"Error reading status: {e}"
+
+def read_raw_config():
+    try:
+        with open(CONFIG, 'r') as f:
+            return f.read()
+    except Exception as e:
+        return f"Error reading config: {e}"
+
+@app.route('/')
+def index():
+    status_html = read_status_text()
+    cfg = read_raw_config()
+    return f'''<!doctype html>
+<html><head><meta charset="utf-8"><title>Pomodoro CLI</title>
+<style>body{{font-family:sans-serif;margin:24px}} .btn{{padding:8px 12px;margin:4px;background:#89b4fa;color:#000;border:none;border-radius:4px;cursor:pointer}} pre{{background:#111;color:#ddd;padding:12px;border-radius:6px;overflow:auto}}</style>
+</head><body>
+<h2>Pomodoro CLI</h2>
+<div>{status_html}</div>
+<div style="margin-top:12px">
+  <form method="post" action="/action/start" style="display:inline"><button class="btn">Start</button></form>
+  <form method="post" action="/action/pause" style="display:inline"><button class="btn">Pause</button></form>
+  <form method="post" action="/action/resume" style="display:inline"><button class="btn">Resume</button></form>
+  <form method="post" action="/action/stop" style="display:inline"><button class="btn">Stop</button></form>
+  <form method="post" action="/action/reset" style="display:inline"><button class="btn">Reset</button></form>
+  <form method="post" action="/action/daemon" style="display:inline"><button class="btn">Start Daemon</button></form>
+  <form method="post" action="/action/stop-daemon" style="display:inline"><button class="btn">Stop Daemon</button></form>
+  <form method="post" action="/action/cleanup" style="display:inline"><button class="btn">Cleanup</button></form>
+  <form method="post" action="/action/quick-start" style="display:inline"><button class="btn">Quick Start</button></form>
+  <form method="get" action="/" style="display:inline"><button class="btn">Refresh</button></form>
+  </div>
+<h3>Config (read-only)</h3>
+<pre>{cfg}</pre>
+</body></html>'''
+
+@app.post('/action/<cmd>')
+def do_action(cmd):
+    allowed = {'start','pause','resume','stop','reset','status','daemon','stop-daemon','cleanup','quick-start'}
+    if cmd not in allowed:
+        return 'Invalid command', 400
+    try:
+        subprocess.run([MANAGER, cmd], check=False)
+    except Exception:
+        pass
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(debug=False, port=5001)
+PY
+
+    echo "Web GUI started on http://127.0.0.1:5001/" >&2
+}
+
 # Daemon to continuously monitor sessions and trigger transitions.
 cmd_daemon() {
     # Check if daemon is already running
@@ -1048,6 +1292,12 @@ cmd_daemon() {
     debug_log "Pomodoro daemon started. Monitoring sessions..."
     # Loop indefinitely to check the timer
     while true; do
+        # Re-source config on every loop so Web GUI toggles (e.g., EVENING_LOCK_ENABLED)
+        # and other config changes take effect without restarting the daemon.
+        if [ -f "$POMODORO_CONFIG_FILE" ]; then
+            source "$POMODORO_CONFIG_FILE"
+        fi
+
         read_state # Always read the latest state
         reset_daily_counts
         local is_new_day=$?
@@ -1071,6 +1321,14 @@ cmd_daemon() {
             debug_log "Evening lock is disabled."
         fi
         # END NEW
+
+        # NEW: Strict lock enforcement after 19:45
+        if [ "$STRICT_LOCK_ENABLED" == "ON" ]; then
+            _strict_evening_lock_enforcement
+        fi
+
+        # NEW: Pre-shutdown enforcement 19:31–19:35 and shutdown at 19:35
+        _pre_shutdown_enforcement
 
         # NEW: Unscheduled session reminder
         if [ "$UNSCHEDULED_REMINDER_ENABLED" == "ON" ]; then
@@ -1167,7 +1425,7 @@ cmd_cleanup() {
     echo "Performing comprehensive Pomodoro CLI cleanup..." >&2
 
     # Stop the custom daemon if running
-    ~/.config/pomodoro_cli/pomodoro_manager.sh stop-daemon &>/dev/null
+    "$0" stop-daemon &>/dev/null
     echo "Cleanup: Daemon stopped." >&2
 
     kill_break_locker # Ensure the locker is stopped
@@ -1205,13 +1463,13 @@ cmd_cleanup() {
 
 
     # Remove state, lock, and PID files for a fresh start (but PRESERVE DAILY_LOG_FILE and MARKDOWN_LOG_FILE)
-    rm -f "$HOME/.config/pomodoro_cli/pomodoro_state.json"
+    rm -f "$POMODORO_DIR/pomodoro_state.json"
     # The line below is intentionally commented out to preserve the daily log file.
-    # rm -f "$HOME/.config/pomodoro_cli/pomodoro_daily_log.txt"
-    rm -f "$HOME/.config/pomodoro_cli/pomodoro_lock"
-    rm -f "$HOME/.config/pomodoro_cli/pomodoro_daemon.pid"
+    # rm -f "$POMODORO_DIR/pomodoro_daily_log.txt"
+    rm -f "$POMODORO_DIR/pomodoro_lock"
+    rm -f "$POMODORO_DIR/pomodoro_daemon.pid"
     # NEW: Also remove the last routine update timestamp file
-    rm -f "$HOME/.config/pomodoro_cli/last_routine_update.timestamp"
+    rm -f "$POMODORO_DIR/last_routine_update.timestamp"
     echo "Cleanup: State, lock, PID, and routine update timestamp files removed. Daily log file preserved." >&2
 
     # Also clear temporary log files and the new temporary image file
@@ -1243,7 +1501,7 @@ cmd_quick_start() {
     echo "Performing quick start: Stopping old daemon, restarting Waybar, starting new daemon, then starting work session..." >&2
     
     # Stop the custom daemon if running
-    ~/.config/pomodoro_cli/pomodoro_manager.sh stop-daemon &>/dev/null
+    "$0" stop-daemon &>/dev/null
     echo "Quick Start: Old daemon stopped." >&2
 
     # Kill and restart Waybar
@@ -1398,17 +1656,17 @@ case "$COMMAND" in
     web-gui)
         echo "Starting Pomodoro CLI Web GUI..." >&2
         VENV_PATH="$POMODORO_DIR/venv_pomodoro" # Define virtual environment path
-        if [ -d "$VENV_PATH" ]; then
-            source "$VENV_PATH/bin/activate" && python3 "$POMODORO_DIR/web_gui/app.py" >/dev/null 2>&1 &
-            web_gui_pid=$!
-            echo "Web GUI started with PID: $web_gui_pid. Output will appear here." >&2
-            echo "Opening http://127.0.0.1:5001/ in your default browser..." >&2
-            xdg-open http://127.0.0.1:5001/ &>/dev/null &
-        else
-            echo "Error: Virtual environment not found at $VENV_PATH." >&2
-            echo "Please create and activate it first: python3 -m venv venv_pomodoro && source venv_pomodoro/bin/activate && pip install Flask" >&2
-            exit 1
+        if [ ! -d "$VENV_PATH" ]; then
+            python3 -m venv "$VENV_PATH" || { echo "Error: Failed to create venv at $VENV_PATH" >&2; exit 1; }
         fi
+        # Ensure Flask exists
+        "$VENV_PATH/bin/python" -c 'import flask' 2>/dev/null || "$VENV_PATH/bin/pip" install --quiet Flask || {
+            echo "Error: Failed to install Flask in venv." >&2; exit 1;
+        }
+        "$VENV_PATH/bin/python" "$POMODORO_DIR/web_gui/app.py" >/dev/null 2>&1 &
+        web_gui_pid=$!
+        echo "Web GUI started with PID: $web_gui_pid. Opening browser..." >&2
+        xdg-open http://127.0.0.1:5001/ &>/dev/null &
         ;;
     run-display-block)
         # This case is no longer actively used by start_session for breaks,\

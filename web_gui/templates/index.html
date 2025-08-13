@@ -10,6 +10,11 @@
     <div class="container">
         <header>
             <h1>Pomodoro CLI Control Panel</h1>
+            <div class="header-status">
+                <h3>Current Pomodoro Status</h3>
+                <div class="status-line">{{ pomodoro_status|safe }}</div>
+                <div class="daemon-status daemon-status-{{ daemon_status | lower }}">Daemon: {{ daemon_status }}</div>
+            </div>
             <div class="theme-switch-wrapper">
                 <label class="theme-switch" for="checkbox">
                     <input type="checkbox" id="checkbox" />
@@ -28,11 +33,6 @@
 
         <main class="main-grid">
             <section class="status-actions-section">
-                <div class="status-section section">
-                    <h2>Current Pomodoro Status:</h2>
-                    <p class="pomodoro-status">{{ pomodoro_status }}</p>
-                    <p class="daemon-status daemon-status-{{ daemon_status | lower }}">Daemon Status: {{ daemon_status }}</p>
-                </div>
 
                 <div class="actions-section section">
                     <h2>Pomodoro Actions</h2>
@@ -53,7 +53,6 @@
                 <div class="daemon-tunning-status section">
                     <h2>Daemon Tuning Status</h2>
                     <p>This section will display more detailed daemon status and tuning information.</p>
-                    <!-- Placeholder for more detailed daemon status -->
                 </div>
             </section>
 
@@ -136,7 +135,7 @@
                         <div class="config-group other-settings-group">
                             <h3>Other Settings</h3>
                             <div class="form-row">
-                                <label>Evening Lock Feature ({{ current_config.get("LOCAL_TIMEZONE", "Unknown") }}):</label>
+                                <label>Evening Lock Feature (IST):</label>
                                 <div class="radio-group">
                                     <input type="radio" id="evening_lock_on" name="EVENING_LOCK_ENABLED" value="ON" {% if current_config["EVENING_LOCK_ENABLED"] == "ON" %}checked{% endif %}>
                                     <label for="evening_lock_on">ON</label>
@@ -184,44 +183,28 @@
     const toggleSwitch = document.querySelector('#checkbox');
     const htmlElement = document.documentElement;
 
-    // Function to set the theme
     function setTheme(theme) {
         htmlElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme); // Save preference to local storage
-        // Also send to backend to save persistently
+        localStorage.setItem('theme', theme);
         fetch('/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `save_config=true&THEME_MODE=${theme}`
         });
     }
 
-    // Check for saved theme in local storage or use default from server
     const savedTheme = localStorage.getItem('theme');
-    const initialTheme = htmlElement.getAttribute('data-theme'); // Theme from server
+    const initialTheme = htmlElement.getAttribute('data-theme');
 
     if (savedTheme) {
         setTheme(savedTheme);
-        if (savedTheme === 'dark') {
-            toggleSwitch.checked = true;
-        } else {
-            toggleSwitch.checked = false;
-        }
-    } else if (initialTheme === 'dark') {
-        toggleSwitch.checked = true;
+        toggleSwitch.checked = savedTheme === 'dark';
     } else {
-        toggleSwitch.checked = false;
+        toggleSwitch.checked = initialTheme === 'dark';
     }
 
-    // Listen for toggle change
     toggleSwitch.addEventListener('change', function() {
-        if (this.checked) {
-            setTheme('dark');
-        } else {
-            setTheme('light');
-        }
+        setTheme(this.checked ? 'dark' : 'light');
     });
 </script>
 </html>

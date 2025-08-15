@@ -1,7 +1,9 @@
 import os
 import re
+import shlex
 import subprocess
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+import time
 from datetime import datetime
 import zoneinfo  # Python 3.9+ for timezone support
 
@@ -21,6 +23,21 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 app.logger.addHandler(handler)
 app.logger.setLevel(logging.DEBUG)
+
+# Cache-busting for static assets: append file mtime as version query param
+@app.context_processor
+def add_cache_busting_url_for():
+    def dated_url_for(endpoint, **values):
+        if endpoint == 'static':
+            filename = values.get('filename')
+            if filename:
+                file_path = os.path.join(app.static_folder, filename)
+                if os.path.exists(file_path):
+                    values['v'] = int(os.path.getmtime(file_path))
+                else:
+                    values['v'] = int(time.time())
+        return url_for(endpoint, **values)
+    return dict(url_for=dated_url_for)
 
 # --- Configuration (project-local defaults; can be changed via config file) ---
 POMODORO_MANAGER_SCRIPT = os.path.join(BASE_DIR, "pomodoro_manager.sh")
@@ -68,7 +85,13 @@ DEFAULT_CONFIG = {
     "PRE_SHUTDOWN_BEEP_INTERVAL_SEC": "1",
     "PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC": "10",
     "PRE_SHUTDOWN_SHUTDOWN_TIME": "1945",
-    "THEME_MODE": "dark"
+    "THEME_MODE": "dark",
+    # Reminders (optional; default OFF)
+    "UNSCHEDULED_REMINDER_ENABLED": "OFF",
+    "UNSCHEDULED_REMINDER_INTERVAL_SEC": "180",
+    # Nature sounds
+    "NATURE_SOUNDS_ENABLED": "OFF",
+    "NATURE_SOUNDS_COMMAND": "nature-sounds",
 }
 
 # --- Utility Functions ---
@@ -119,6 +142,8 @@ def get_current_config():
         config["EVENING_LOCK_ENABLED"] = norm_on_off(config.get("EVENING_LOCK_ENABLED"), DEFAULT_CONFIG["EVENING_LOCK_ENABLED"])
         config["STRICT_LOCK_ENABLED"] = norm_on_off(config.get("STRICT_LOCK_ENABLED"), DEFAULT_CONFIG.get("STRICT_LOCK_ENABLED", "ON"))
         config["PRE_SHUTDOWN_ENFORCEMENT_ENABLED"] = norm_on_off(config.get("PRE_SHUTDOWN_ENFORCEMENT_ENABLED"), DEFAULT_CONFIG.get("PRE_SHUTDOWN_ENFORCEMENT_ENABLED", "ON"))
+        config["UNSCHEDULED_REMINDER_ENABLED"] = norm_on_off(config.get("UNSCHEDULED_REMINDER_ENABLED"), DEFAULT_CONFIG.get("UNSCHEDULED_REMINDER_ENABLED", "OFF"))
+        config["NATURE_SOUNDS_ENABLED"] = norm_on_off(config.get("NATURE_SOUNDS_ENABLED"), DEFAULT_CONFIG.get("NATURE_SOUNDS_ENABLED", "OFF"))
 
         # Get local timezone for display
         try:
@@ -174,6 +199,10 @@ def update_config(new_config_values):
         evening_lock_enabled_value = new_config_values.pop("EVENING_LOCK_ENABLED", None)
         if evening_lock_enabled_value is not None:
             normalized_evening_lock = str(evening_lock_enabled_value).strip().upper()
+
+        # Nature sounds explicit handling (avoid duplicate-key issues)
+        nature_enabled_value = new_config_values.pop("NATURE_SOUNDS_ENABLED", None)
+        nature_command_value = new_config_values.pop("NATURE_SOUNDS_COMMAND", None)
 
         # Keys explicitly handled here to avoid duplicate processing later
         explicitly_handled_keys = {
@@ -240,7 +269,19 @@ def update_config(new_config_values):
             if not updated:
                 updated_lines.append(line)
 
+        # Append any keys that did not exist in the file
+        for key, value in new_config_values.items():
+            # Quote all values to be safe (durations/ON-OFF/paths)
+            updated_lines.append(f"{key}=\"{value}\"\n")
+
         with open(POMODORO_CONFIG_FILE, 'w') as f:
+            # Ensure authoritative values for nature sounds are placed at the end (last-one-wins)
+            if nature_enabled_value is not None:
+                on_off_literal = "ON" if str(nature_enabled_value).strip().upper() == "ON" else "OFF"
+                updated_lines.append(f"NATURE_SOUNDS_ENABLED=\"{on_off_literal}\"\n")
+            if nature_command_value is not None:
+                updated_lines.append(f"NATURE_SOUNDS_COMMAND=\"{nature_command_value}\"\n")
+
             f.writelines(updated_lines)
         app.logger.debug("Config file write successful.")
 
@@ -255,6 +296,42 @@ def update_config(new_config_values):
 
 
 # --- Flask Routes ---
+
+def execute_pomodoro_command(action: str) -> bool:
+    """Run a safe, whitelisted command against pomodoro_manager.sh."""
+    allowed = {
+        "start",
+        "pause",
+        "resume",
+        "stop",
+        "reset",
+        "status",
+        "daemon",
+        "stop-daemon",
+        "cleanup",
+        "quick-start",
+    }
+    special_web_actions = {"web-restart", "web-stop"}
+    if action not in allowed and action not in special_web_actions:
+        app.logger.warning(f"Blocked non-whitelisted action: {action}")
+        return False
+    try:
+        if action in special_web_actions:
+            # Schedule a delayed restart/stop so this request can return cleanly
+            # Detach the child so it survives when this server is killed
+            delayed = f"sleep 1; {shlex.quote(POMODORO_MANAGER_SCRIPT)} {action}"
+            subprocess.Popen(
+                ["bash", "-lc", delayed],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid,
+            )
+        else:
+            subprocess.run([POMODORO_MANAGER_SCRIPT, action], check=False)
+        return True
+    except Exception as e:
+        app.logger.error(f"Failed to run action '{action}': {e}")
+        return False
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -367,5 +444,18 @@ def get_pomodoro_status():
         return f"Error: {e}"
 
 
+# Lightweight API for live status polling (must be defined before app.run)
+@app.get('/api/status')
+def api_status():
+    try:
+        text = get_pomodoro_status()
+        daemon = get_daemon_status()
+        return jsonify({"text": text, "daemon": daemon})
+    except Exception as e:
+        app.logger.error(f"/api/status error: {e}")
+        return jsonify({"text": f"Error: {e}", "daemon": "Unknown"}), 500
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    # Run without debug/reloader to avoid duplicate processes when launched from the manager
+    app.run(debug=False, host='127.0.0.1', port=5001)

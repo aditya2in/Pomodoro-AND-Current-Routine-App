@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="{{ theme_mode }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,10 @@
             <h1>Pomodoro CLI Control Panel</h1>
             <div class="header-status">
                 <h3>Current Pomodoro Status</h3>
-                <div class="status-line">{{ pomodoro_status|safe }}</div>
+                <div class="status-controls">
+                    <div class="status-line" id="status-line">{{ pomodoro_status|safe }}</div>
+                    <button type="button" id="refresh-status">Refresh</button>
+                </div>
                 <div class="daemon-status daemon-status-{{ daemon_status | lower }}">Daemon: {{ daemon_status }}</div>
             </div>
             <div class="theme-switch-wrapper">
@@ -22,7 +25,29 @@
                 </label>
                 <em>Toggle Dark Mode</em>
             </div>
+                <div class="actions-strip section" style="margin-top:10px;">
+                    <form method="post" class="action-form">
+                        <button type="submit" name="pomodoro_action" value="web-restart">Restart Web UI</button>
+                        <button type="submit" name="pomodoro_action" value="web-stop">Stop Web UI</button>
+                    </form>
+                </div>
         </header>
+
+        <!-- Horizontal actions strip under the control panel title -->
+        <div class="actions-strip section">
+            <form method="post" class="action-form">
+                <button type="submit" name="pomodoro_action" value="start">Start</button>
+                <button type="submit" name="pomodoro_action" value="pause">Pause</button>
+                <button type="submit" name="pomodoro_action" value="resume">Resume</button>
+                <button type="submit" name="pomodoro_action" value="stop">Stop</button>
+                <button type="submit" name="pomodoro_action" value="reset">Reset</button>
+                <button type="submit" name="pomodoro_action" value="quick-start">Quick Start</button>
+                <button type="submit" name="pomodoro_action" value="cleanup">Cleanup</button>
+                <button type="submit" name="pomodoro_action" value="daemon">Start Daemon</button>
+                <button type="submit" name="pomodoro_action" value="stop-daemon">Stop Daemon</button>
+                
+            </form>
+        </div>
 
         {% if message %}
             <div class="message success">{{ message }}</div>
@@ -32,179 +57,356 @@
         {% endif %}
 
         <main class="main-grid">
-            <section class="status-actions-section">
-
-                <div class="actions-section section">
-                    <h2>Pomodoro Actions</h2>
-                    <form method="post" class="action-form">
-                        <button type="submit" name="pomodoro_action" value="start">Start</button>
-                        <button type="submit" name="pomodoro_action" value="pause">Pause</button>
-                        <button type="submit" name="pomodoro_action" value="resume">Resume</button>
-                        <button type="submit" name="pomodoro_action" value="stop">Stop</button>
-                        <button type="submit" name="pomodoro_action" value="reset">Reset</button>
-                        <button type="submit" name="pomodoro_action" value="quick-start">Quick Start</button>
-                        <button type="submit" name="pomodoro_action" value="cleanup">Cleanup</button>
-                        <button type="submit" name="pomodoro_action" value="daemon">Start Daemon</button>
-                        <button type="submit" name="pomodoro_action" value="stop-daemon">Stop Daemon</button>
-                        <a href="http://127.0.0.1:5001/" target="_blank" class="button action-button">Web GUI</a>
-                    </form>
-                </div>
-
-                <div class="daemon-tunning-status section">
-                    <h2>Daemon Tuning Status</h2>
-                    <p>This section will display more detailed daemon status and tuning information.</p>
-                </div>
-            </section>
-
             <section class="config-section section">
-                <h2>Configuration Variables</h2>
                 <form method="post" class="config-form">
+                    <div class="config-header-row">
+                        <h2>Configuration Variables</h2>
+                        <div class="config-header-actions">
+                            <button type="submit" name="save_config" value="true">Save Configuration</button>
+                            <button type="submit" name="restore_defaults" value="true" class="restore-button">Restore All Defaults</button>
+                        </div>
+                    </div>
                     {% if current_config %}
-                        <div class="config-group test-mode-group">
-                            <h3>Test Mode Settings</h3>
-                            <div class="form-row">
-                                <label>Test Mode:</label>
-                                <div class="radio-group">
-                                    <input type="radio" id="test_mode_on" name="TEST_MODE" value="ON" {% if current_config["TEST_MODE"] == "ON" %}checked{% endif %}>
-                                    <label for="test_mode_on">ON</label>
-                                    <input type="radio" id="test_mode_off" name="TEST_MODE" value="OFF" {% if current_config["TEST_MODE"] == "OFF" %}checked{% endif %}>
-                                    <label for="test_mode_off">OFF</label>
-                                </div>
-                                <span class="default-value">Default: {{ default_config.get("TEST_MODE", "OFF") }}</span>
-                            </div>
-
-                            <h4>Test Durations</h4>
-                            <div class="duration-grid">
-                                <div class="form-group">
-                                    <label for="WORK_DURATION_TEST">Work Duration:</label>
-                                    <input type="text" id="WORK_DURATION_TEST" name="WORK_DURATION_TEST" value="{{ current_config.get('WORK_DURATION_TEST', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('WORK_DURATION_TEST', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="WORK_DURATION_TEST" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="SHORT_BREAK_DURATION_TEST">Short Break Duration:</label>
-                                    <input type="text" id="SHORT_BREAK_DURATION_TEST" name="SHORT_BREAK_DURATION_TEST" value="{{ current_config.get('SHORT_BREAK_DURATION_TEST', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('SHORT_BREAK_DURATION_TEST', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="SHORT_BREAK_DURATION_TEST" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="LONG_BREAK_DURATION_TEST">Long Break Duration:</label>
-                                    <input type="text" id="LONG_BREAK_DURATION_TEST" name="LONG_BREAK_DURATION_TEST" value="{{ current_config.get('LONG_BREAK_DURATION_TEST', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('LONG_BREAK_DURATION_TEST', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="LONG_BREAK_DURATION_TEST" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="BREAK_LOCK_DELAY_SEC_TEST">Break Lock Delay:</label>
-                                    <input type="text" id="BREAK_LOCK_DELAY_SEC_TEST" name="BREAK_LOCK_DELAY_SEC_TEST" value="{{ current_config.get('BREAK_LOCK_DELAY_SEC_TEST', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('BREAK_LOCK_DELAY_SEC_TEST', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="BREAK_LOCK_DELAY_SEC_TEST" class="restore-individual-button">Default</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="config-group default-mode-group">
-                            <h3>Default Mode Settings</h3>
-                            <div class="duration-grid">
-                                <div class="form-group">
-                                    <label for="WORK_DURATION_DEFAULT">Work Duration:</label>
-                                    <input type="text" id="WORK_DURATION_DEFAULT" name="WORK_DURATION_DEFAULT" value="{{ current_config.get('WORK_DURATION_DEFAULT', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('WORK_DURATION_DEFAULT', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="WORK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="SHORT_BREAK_DURATION_DEFAULT">Short Break Duration:</label>
-                                    <input type="text" id="SHORT_BREAK_DURATION_DEFAULT" name="SHORT_BREAK_DURATION_DEFAULT" value="{{ current_config.get('SHORT_BREAK_DURATION_DEFAULT', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('SHORT_BREAK_DURATION_DEFAULT', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="SHORT_BREAK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="LONG_BREAK_DURATION_DEFAULT">Long Break Duration:</label>
-                                    <input type="text" id="LONG_BREAK_DURATION_DEFAULT" name="LONG_BREAK_DURATION_DEFAULT" value="{{ current_config.get('LONG_BREAK_DURATION_DEFAULT', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('LONG_BREAK_DURATION_DEFAULT', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="LONG_BREAK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
-                                </div>
-                                <div class="form-group">
-                                    <label for="BREAK_LOCK_DELAY_SEC_DEFAULT">Break Lock Delay:</label>
-                                    <input type="text" id="BREAK_LOCK_DELAY_SEC_DEFAULT" name="BREAK_LOCK_DELAY_SEC_DEFAULT" value="{{ current_config.get('BREAK_LOCK_DELAY_SEC_DEFAULT', '') }}">
-                                    <span class="default-value">Default: {{ default_config.get('BREAK_LOCK_DELAY_SEC_DEFAULT', 'N/A') }}</span>
-                                    <button type="submit" name="restore_individual_default" value="BREAK_LOCK_DELAY_SEC_DEFAULT" class="restore-individual-button">Default</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="config-group other-settings-group">
-                            <h3>Other Settings</h3>
-                            <div class="form-row">
-                                <label>Evening Lock Feature (IST):</label>
-                                <div class="radio-group">
-                                    <input type="radio" id="evening_lock_on" name="EVENING_LOCK_ENABLED" value="ON" {% if current_config["EVENING_LOCK_ENABLED"] == "ON" %}checked{% endif %}>
-                                    <label for="evening_lock_on">ON</label>
-                                    <input type="radio" id="evening_lock_off" name="EVENING_LOCK_ENABLED" value="OFF" {% if current_config["EVENING_LOCK_ENABLED"] == "OFF" %}checked{% endif %}>
-                                    <label for="evening_lock_off">OFF</label>
-                                </div>
-                                <span class="default-value">Default: ON (Interval: {{ default_config["EVENING_LOCK_INTERVAL_SEC"] }} seconds)</span>
-                            </div>
-                            <div class="form-group">
-                                <label for="LOCK_START_TIME_CONFIG">Lock Start Time (HHMM):</label>
-                                <input type="text" id="LOCK_START_TIME_CONFIG" name="LOCK_START_TIME_CONFIG" value="{{ current_config.get('LOCK_START_TIME_CONFIG', '') }}">
-                                <span class="default-value">Default: {{ default_config.get('LOCK_START_TIME_CONFIG', 'N/A') }}</span>
-                                <button type="submit" name="restore_individual_default" value="LOCK_START_TIME_CONFIG" class="restore-individual-button">Default</button>
-                            </div>
-                            <div class="form-group">
-                                <label for="LOCK_FREQUENCY_CONFIG">Lock Frequency (seconds):</label>
-                                <input type="number" id="LOCK_FREQUENCY_CONFIG" name="LOCK_FREQUENCY_CONFIG" value="{{ current_config.get('LOCK_FREQUENCY_CONFIG', '') }}">
-                                <span class="default-value">Default: {{ default_config.get('LOCK_FREQUENCY_CONFIG', 'N/A') }}</span>
-                                <button type="submit" name="restore_individual_default" value="LOCK_FREQUENCY_CONFIG" class="restore-individual-button">Default</button>
-                            </div>
-                            {% for key, value in current_config.items() %}
-                                {% if key not in ["TEST_MODE", "BREAK_LOCK_DELAY_SEC_DEFAULT", "BREAK_LOCK_DELAY_SEC_TEST", "WORK_DURATION_DEFAULT", "SHORT_BREAK_DURATION_DEFAULT", "LONG_BREAK_DURATION_DEFAULT", "WORK_DURATION_TEST", "SHORT_BREAK_DURATION_TEST", "LONG_BREAK_DURATION_TEST", "EVENING_LOCK_ENABLED", "POMODORO_DIR", "WORK_DURATION", "SHORT_BREAK_DURATION", "LONG_BREAK_DURATION", "BREAK_LOCK_DELAY_SEC", "THEME_MODE", "LOCAL_TIMEZONE"] %}
-                                    <div class="form-group">
-                                        <label for="{{ key }}">{{ key }}:</label>
-                                        <input type="text" id="{{ key }}" name="{{ key }}" value="{{ value }}">
-                                        <span class="default-value">Default: {{ default_config.get(key, 'N/A') }}</span>
-                                        <button type="submit" name="restore_individual_default" value="{{ key }}" class="restore-individual-button">Default</button>
+                        <!-- Place Test/Default mode cards at the top, side-by-side -->
+                        <div class="modes-row">
+                            <div class="config-group test-mode-group">
+                                <h3>Test Mode</h3>
+                                <div class="form-row">
+                                    <label>Enable:</label>
+                                    <div class="radio-group">
+                                        <input type="radio" id="test_mode_on" name="TEST_MODE" value="ON" {% if current_config["TEST_MODE"] == "ON" %}checked{% endif %}>
+                                        <label for="test_mode_on">ON</label>
+                                        <input type="radio" id="test_mode_off" name="TEST_MODE" value="OFF" {% if current_config["TEST_MODE"] == "OFF" %}checked{% endif %}>
+                                        <label for="test_mode_off">OFF</label>
                                     </div>
-                                {% endif %}
-                            {% endfor %}
+                                    <span class="default-value">Default: {{ default_config.get("TEST_MODE", "OFF") }}</span>
+                                </div>
+                                <h4>Test Durations</h4>
+                                <div class="duration-grid">
+                                    <div class="form-group">
+                                        <label for="WORK_DURATION_TEST">Work:</label>
+                                        <input type="text" id="WORK_DURATION_TEST" name="WORK_DURATION_TEST" value="{{ current_config.get('WORK_DURATION_TEST', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('WORK_DURATION_TEST', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="WORK_DURATION_TEST" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="SHORT_BREAK_DURATION_TEST">Short Break:</label>
+                                        <input type="text" id="SHORT_BREAK_DURATION_TEST" name="SHORT_BREAK_DURATION_TEST" value="{{ current_config.get('SHORT_BREAK_DURATION_TEST', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('SHORT_BREAK_DURATION_TEST', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="SHORT_BREAK_DURATION_TEST" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="LONG_BREAK_DURATION_TEST">Long Break:</label>
+                                        <input type="text" id="LONG_BREAK_DURATION_TEST" name="LONG_BREAK_DURATION_TEST" value="{{ current_config.get('LONG_BREAK_DURATION_TEST', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('LONG_BREAK_DURATION_TEST', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="LONG_BREAK_DURATION_TEST" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="BREAK_LOCK_DELAY_SEC_TEST">Lock Delay (s):</label>
+                                        <input type="text" id="BREAK_LOCK_DELAY_SEC_TEST" name="BREAK_LOCK_DELAY_SEC_TEST" value="{{ current_config.get('BREAK_LOCK_DELAY_SEC_TEST', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('BREAK_LOCK_DELAY_SEC_TEST', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="BREAK_LOCK_DELAY_SEC_TEST" class="restore-individual-button">Default</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="config-group default-mode-group">
+                                <h3>Default Mode</h3>
+                                <div class="duration-grid">
+                                    <div class="form-group">
+                                        <label for="WORK_DURATION_DEFAULT">Work:</label>
+                                        <input type="text" id="WORK_DURATION_DEFAULT" name="WORK_DURATION_DEFAULT" value="{{ current_config.get('WORK_DURATION_DEFAULT', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('WORK_DURATION_DEFAULT', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="WORK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="SHORT_BREAK_DURATION_DEFAULT">Short Break:</label>
+                                        <input type="text" id="SHORT_BREAK_DURATION_DEFAULT" name="SHORT_BREAK_DURATION_DEFAULT" value="{{ current_config.get('SHORT_BREAK_DURATION_DEFAULT', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('SHORT_BREAK_DURATION_DEFAULT', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="SHORT_BREAK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="LONG_BREAK_DURATION_DEFAULT">Long Break:</label>
+                                        <input type="text" id="LONG_BREAK_DURATION_DEFAULT" name="LONG_BREAK_DURATION_DEFAULT" value="{{ current_config.get('LONG_BREAK_DURATION_DEFAULT', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('LONG_BREAK_DURATION_DEFAULT', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="LONG_BREAK_DURATION_DEFAULT" class="restore-individual-button">Default</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="BREAK_LOCK_DELAY_SEC_DEFAULT">Lock Delay (s):</label>
+                                        <input type="text" id="BREAK_LOCK_DELAY_SEC_DEFAULT" name="BREAK_LOCK_DELAY_SEC_DEFAULT" value="{{ current_config.get('BREAK_LOCK_DELAY_SEC_DEFAULT', '') }}">
+                                        <span class="default-value">Default: {{ default_config.get('BREAK_LOCK_DELAY_SEC_DEFAULT', 'N/A') }}</span>
+                                        <button type="submit" name="restore_individual_default" value="BREAK_LOCK_DELAY_SEC_DEFAULT" class="restore-individual-button">Default</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-grid">
+                            <div class="left-settings">
+                                <div class="config-group other-settings-group">
+                                    <h3>Other Settings</h3>
+                                    <div class="other-settings-grid">
+                                        <div class="settings-card">
+                                            <div class="form-row">
+                                                <label>Evening Lock Feature (IST):</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="evening_lock_on" name="EVENING_LOCK_ENABLED" value="ON" {% if current_config["EVENING_LOCK_ENABLED"] == "ON" %}checked{% endif %}>
+                                                    <label for="evening_lock_on">ON</label>
+                                                    <input type="radio" id="evening_lock_off" name="EVENING_LOCK_ENABLED" value="OFF" {% if current_config["EVENING_LOCK_ENABLED"] == "OFF" %}checked{% endif %}>
+                                                    <label for="evening_lock_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: ON (Interval: {{ default_config["EVENING_LOCK_INTERVAL_SEC"] }} seconds)</span>
+                                            </div>
+                                        </div>
+                                        <div class="settings-card">
+                                            <h3>Evening Lock</h3>
+                                            <div class="form-group">
+                                                <label for="LOCK_START_TIME_CONFIG">Start (HHMM):</label>
+                                                <input type="text" id="LOCK_START_TIME_CONFIG" name="LOCK_START_TIME_CONFIG" value="{{ current_config.get('LOCK_START_TIME_CONFIG', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LOCK_START_TIME_CONFIG', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LOCK_START_TIME_CONFIG" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LOCK_FREQUENCY_CONFIG">Frequency (s):</label>
+                                                <input type="number" id="LOCK_FREQUENCY_CONFIG" name="LOCK_FREQUENCY_CONFIG" value="{{ current_config.get('LOCK_FREQUENCY_CONFIG', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LOCK_FREQUENCY_CONFIG', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LOCK_FREQUENCY_CONFIG" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        
+                                        <div class="settings-card">
+                                            <h3>Strict Lock</h3>
+                                            <div class="form-row">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="strict_lock_on" name="STRICT_LOCK_ENABLED" value="ON" {% if current_config["STRICT_LOCK_ENABLED"] == "ON" %}checked{% endif %}>
+                                                    <label for="strict_lock_on">ON</label>
+                                                    <input type="radio" id="strict_lock_off" name="STRICT_LOCK_ENABLED" value="OFF" {% if current_config["STRICT_LOCK_ENABLED"] == "OFF" %}checked{% endif %}>
+                                                    <label for="strict_lock_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('STRICT_LOCK_ENABLED', 'ON') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="STRICT_LOCK_START_TIME_CONFIG">Start (HHMM):</label>
+                                                <input type="text" id="STRICT_LOCK_START_TIME_CONFIG" name="STRICT_LOCK_START_TIME_CONFIG" value="{{ current_config.get('STRICT_LOCK_START_TIME_CONFIG', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('STRICT_LOCK_START_TIME_CONFIG', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="STRICT_LOCK_START_TIME_CONFIG" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="STRICT_LOCK_END_TIME_CONFIG">End (HHMM):</label>
+                                                <input type="text" id="STRICT_LOCK_END_TIME_CONFIG" name="STRICT_LOCK_END_TIME_CONFIG" value="{{ current_config.get('STRICT_LOCK_END_TIME_CONFIG', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('STRICT_LOCK_END_TIME_CONFIG', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="STRICT_LOCK_END_TIME_CONFIG" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="STRICT_LOCK_FREQUENCY_SEC">Frequency (s):</label>
+                                                <input type="number" id="STRICT_LOCK_FREQUENCY_SEC" name="STRICT_LOCK_FREQUENCY_SEC" value="{{ current_config.get('STRICT_LOCK_FREQUENCY_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('STRICT_LOCK_FREQUENCY_SEC', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="STRICT_LOCK_FREQUENCY_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card">
+                                            <h3>Pre-shutdown</h3>
+                                            <div class="form-row">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="pre_shutdown_on" name="PRE_SHUTDOWN_ENFORCEMENT_ENABLED" value="ON" {% if current_config["PRE_SHUTDOWN_ENFORCEMENT_ENABLED"] == "ON" %}checked{% endif %}>
+                                                    <label for="pre_shutdown_on">ON</label>
+                                                    <input type="radio" id="pre_shutdown_off" name="PRE_SHUTDOWN_ENFORCEMENT_ENABLED" value="OFF" {% if current_config["PRE_SHUTDOWN_ENFORCEMENT_ENABLED"] == "OFF" %}checked{% endif %}>
+                                                    <label for="pre_shutdown_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_ENFORCEMENT_ENABLED', 'ON') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="PRE_SHUTDOWN_START_TIME">Start (HHMM):</label>
+                                                <input type="text" id="PRE_SHUTDOWN_START_TIME" name="PRE_SHUTDOWN_START_TIME" value="{{ current_config.get('PRE_SHUTDOWN_START_TIME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_START_TIME', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="PRE_SHUTDOWN_START_TIME" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="PRE_SHUTDOWN_END_TIME">End (HHMM):</label>
+                                                <input type="text" id="PRE_SHUTDOWN_END_TIME" name="PRE_SHUTDOWN_END_TIME" value="{{ current_config.get('PRE_SHUTDOWN_END_TIME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_END_TIME', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="PRE_SHUTDOWN_END_TIME" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="PRE_SHUTDOWN_BEEP_INTERVAL_SEC">Beep Interval (s):</label>
+                                                <input type="number" id="PRE_SHUTDOWN_BEEP_INTERVAL_SEC" name="PRE_SHUTDOWN_BEEP_INTERVAL_SEC" value="{{ current_config.get('PRE_SHUTDOWN_BEEP_INTERVAL_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_BEEP_INTERVAL_SEC', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="PRE_SHUTDOWN_BEEP_INTERVAL_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC">Notify Interval (s):</label>
+                                                <input type="number" id="PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC" name="PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC" value="{{ current_config.get('PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="PRE_SHUTDOWN_SHUTDOWN_TIME">Shutdown At (HHMM):</label>
+                                                <input type="text" id="PRE_SHUTDOWN_SHUTDOWN_TIME" name="PRE_SHUTDOWN_SHUTDOWN_TIME" value="{{ current_config.get('PRE_SHUTDOWN_SHUTDOWN_TIME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('PRE_SHUTDOWN_SHUTDOWN_TIME', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="PRE_SHUTDOWN_SHUTDOWN_TIME" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="SHUTDOWN_RETRY_INTERVAL_SEC">Retry Interval (s):</label>
+                                                <input type="number" id="SHUTDOWN_RETRY_INTERVAL_SEC" name="SHUTDOWN_RETRY_INTERVAL_SEC" value="{{ current_config.get('SHUTDOWN_RETRY_INTERVAL_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('SHUTDOWN_RETRY_INTERVAL_SEC', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="SHUTDOWN_RETRY_INTERVAL_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card">
+                                            <h3>Reminders</h3>
+                                            <div class="form-group">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="reminder_on" name="UNSCHEDULED_REMINDER_ENABLED" value="ON" {% if current_config.get('UNSCHEDULED_REMINDER_ENABLED', 'OFF') == 'ON' %}checked{% endif %}>
+                                                    <label for="reminder_on">ON</label>
+                                                    <input type="radio" id="reminder_off" name="UNSCHEDULED_REMINDER_ENABLED" value="OFF" {% if current_config.get('UNSCHEDULED_REMINDER_ENABLED', 'OFF') == 'OFF' %}checked{% endif %}>
+                                                    <label for="reminder_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('UNSCHEDULED_REMINDER_ENABLED', 'OFF') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="UNSCHEDULED_REMINDER_INTERVAL_SEC">Interval (s):</label>
+                                                <input type="number" id="UNSCHEDULED_REMINDER_INTERVAL_SEC" name="UNSCHEDULED_REMINDER_INTERVAL_SEC" value="{{ current_config.get('UNSCHEDULED_REMINDER_INTERVAL_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('UNSCHEDULED_REMINDER_INTERVAL_SEC', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="UNSCHEDULED_REMINDER_INTERVAL_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card">
+                                            <h3>Break Lock</h3>
+                                            <div class="form-row">
+                                                <label>Current Delay (s):</label>
+                                                <span class="default-value">{{ current_config.get('BREAK_LOCK_DELAY_SEC', 'N/A') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LOCK_FREQUENCY_CONFIG">Lock Frequency (s):</label>
+                                                <input type="number" id="LOCK_FREQUENCY_CONFIG" name="LOCK_FREQUENCY_CONFIG" value="{{ current_config.get('LOCK_FREQUENCY_CONFIG', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LOCK_FREQUENCY_CONFIG', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LOCK_FREQUENCY_CONFIG" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-row">
+                                                <span class="default-value">Note: Lock Delay (s) values for Test/Default are at the top in their respective cards. The frequency here is used for both break-time locking and evening enforcement.</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card">
+                                            <h3>Nature Sounds</h3>
+                                            <div class="form-group">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="nature_on" name="NATURE_SOUNDS_ENABLED" value="ON" {% if current_config.get('NATURE_SOUNDS_ENABLED', 'OFF') == 'ON' %}checked{% endif %}>
+                                                    <label for="nature_on">ON</label>
+                                                    <input type="radio" id="nature_off" name="NATURE_SOUNDS_ENABLED" value="OFF" {% if current_config.get('NATURE_SOUNDS_ENABLED', 'OFF') == 'OFF' %}checked{% endif %}>
+                                                    <label for="nature_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('NATURE_SOUNDS_ENABLED', 'OFF') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="NATURE_SOUNDS_COMMAND">Command:</label>
+                                                <input type="text" id="NATURE_SOUNDS_COMMAND" name="NATURE_SOUNDS_COMMAND" value="{{ current_config.get('NATURE_SOUNDS_COMMAND', 'nature-sounds') }}">
+                                                <span class="default-value">Default: {{ default_config.get('NATURE_SOUNDS_COMMAND', 'nature-sounds') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="NATURE_SOUNDS_COMMAND" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card">
+                                            <h3>Obsidian</h3>
+                                            <div class="form-group">
+                                                <label for="OBSIDIAN_VAULT_PATH">Vault Path:</label>
+                                                <input type="text" id="OBSIDIAN_VAULT_PATH" name="OBSIDIAN_VAULT_PATH" value="{{ current_config.get('OBSIDIAN_VAULT_PATH', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('OBSIDIAN_VAULT_PATH', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="OBSIDIAN_VAULT_PATH" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="OBSIDIAN_VAULT_NAME">Vault Name:</label>
+                                                <input type="text" id="OBSIDIAN_VAULT_NAME" name="OBSIDIAN_VAULT_NAME" value="{{ current_config.get('OBSIDIAN_VAULT_NAME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('OBSIDIAN_VAULT_NAME', 'N/A') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="OBSIDIAN_VAULT_NAME" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        {% for key, value in current_config.items() %}
+                                            {% if key not in ["TEST_MODE", "BREAK_LOCK_DELAY_SEC_DEFAULT", "BREAK_LOCK_DELAY_SEC_TEST", "WORK_DURATION_DEFAULT", "SHORT_BREAK_DURATION_DEFAULT", "LONG_BREAK_DURATION_DEFAULT", "WORK_DURATION_TEST", "SHORT_BREAK_DURATION_TEST", "LONG_BREAK_DURATION_TEST", "EVENING_LOCK_ENABLED", "POMODORO_DIR", "WORK_DURATION", "SHORT_BREAK_DURATION", "LONG_BREAK_DURATION", "BREAK_LOCK_DELAY_SEC", "THEME_MODE", "LOCAL_TIMEZONE", "LOCK_START_TIME_CONFIG", "LOCK_FREQUENCY_CONFIG", "STRICT_LOCK_ENABLED", "STRICT_LOCK_START_TIME_CONFIG", "STRICT_LOCK_END_TIME_CONFIG", "STRICT_LOCK_FREQUENCY_SEC", "PRE_SHUTDOWN_ENFORCEMENT_ENABLED", "PRE_SHUTDOWN_START_TIME", "PRE_SHUTDOWN_END_TIME", "PRE_SHUTDOWN_BEEP_INTERVAL_SEC", "PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC", "PRE_SHUTDOWN_SHUTDOWN_TIME", "SHUTDOWN_RETRY_INTERVAL_SEC", "UNSCHEDULED_REMINDER_ENABLED", "UNSCHEDULED_REMINDER_INTERVAL_SEC", "OBSIDIAN_VAULT_PATH", "OBSIDIAN_VAULT_NAME"] %}
+                                                <div class="settings-card">
+                                                    <h3>{{ key }}</h3>
+                                                    <div class="form-group">
+                                                        <label for="{{ key }}">{{ key }}:</label>
+                                                        <input type="text" id="{{ key }}" name="{{ key }}" value="{{ value }}">
+                                                        <span class="default-value">Default: {{ default_config.get(key, 'N/A') }}</span>
+                                                        <button type="submit" name="restore_individual_default" value="{{ key }}" class="restore-individual-button">Default</button>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            
                         </div>
                     {% else %}
                         <p class="error">Could not load current configuration.</p>
                     {% endif %}
-                    <div class="form-actions">
-                        <button type="submit" name="save_config" value="true">Save Configuration</button>
-                        <button type="submit" name="restore_defaults" value="true" class="restore-button">Restore All Defaults</button>
-                    </div>
                 </form>
             </section>
         </main>
     </div>
-</body>
-<script>
+    <script>
+    // Manual + periodic status refresh
+    const statusEl = document.getElementById('status-line');
+    const daemonEl = document.querySelector('.daemon-status');
+    const refreshBtn = document.getElementById('refresh-status');
+    async function pollStatus(){
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store' });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        if (statusEl && data.text !== undefined) statusEl.innerHTML = data.text;
+        if (daemonEl && data.daemon) {
+          daemonEl.textContent = 'Daemon: ' + data.daemon;
+          daemonEl.classList.toggle('daemon-status-running', data.daemon === 'Running');
+          daemonEl.classList.toggle('daemon-status-stopped', data.daemon !== 'Running');
+        }
+      } catch(_) {}
+    }
+    if (refreshBtn) refreshBtn.addEventListener('click', pollStatus);
+    // Poll every 2 seconds
+    setInterval(pollStatus, 2000);
+    </script>
+    <script>
     const toggleSwitch = document.querySelector('#checkbox');
     const htmlElement = document.documentElement;
 
-    function setTheme(theme) {
+    function applyTheme(theme) {
         htmlElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-        fetch('/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `save_config=true&THEME_MODE=${theme}`
-        });
+    }
+    async function persistTheme(theme) {
+        try {
+            await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `save_config=true&THEME_MODE=${theme}`
+            });
+        } catch (_) {}
     }
 
     const savedTheme = localStorage.getItem('theme');
     const initialTheme = htmlElement.getAttribute('data-theme');
+    const effectiveTheme = savedTheme || initialTheme || 'dark';
+    applyTheme(effectiveTheme);
+    if (toggleSwitch) toggleSwitch.checked = effectiveTheme === 'dark';
 
-    if (savedTheme) {
-        setTheme(savedTheme);
-        toggleSwitch.checked = savedTheme === 'dark';
-    } else {
-        toggleSwitch.checked = initialTheme === 'dark';
-    }
-
-    toggleSwitch.addEventListener('change', function() {
-        setTheme(this.checked ? 'dark' : 'light');
+    if (toggleSwitch) toggleSwitch.addEventListener('change', function() {
+        const theme = this.checked ? 'dark' : 'light';
+        applyTheme(theme);
+        persistTheme(theme);
     });
-</script>
+    </script>
+</body>
 </html>

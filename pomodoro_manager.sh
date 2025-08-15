@@ -1,5 +1,60 @@
 #!/bin/bash
 
+# Renders the config file as a boxed table with grouped sections
+render_config_table_boxed() {
+    local width_key=32
+    local width_val=52
+    local border_top=$(printf "+%*s+" $((width_key + width_val + 3)) "" | tr ' ' '-')
+    local header_key="Key"; local header_val="Value"
+
+    # Print header
+    printf "%s\n" "$border_top"
+    printf "| %-*s | %-*s |\n" $width_key "$header_key" $width_val "$header_val"
+    printf "%s\n" "$border_top"
+
+    # Define sections and their keys
+    declare -A sections=(
+        ["TEST MODE"]="TEST_MODE"
+        ["POMODORO TIMING"]="WORK_DURATION_DEFAULT SHORT_BREAK_DURATION_DEFAULT LONG_BREAK_DURATION_DEFAULT WORK_DURATION_TEST SHORT_BREAK_DURATION_TEST LONG_BREAK_DURATION_TEST"
+        ["BREAK LOCKING"]="BREAK_LOCK_DELAY_SEC_DEFAULT BREAK_LOCK_DELAY_SEC_TEST LOCK_FREQUENCY_CONFIG"
+        ["EVENING DISCIPLINE"]="EVENING_LOCK_ENABLED LOCK_START_TIME_CONFIG STRICT_LOCK_ENABLED STRICT_LOCK_START_TIME_CONFIG STRICT_LOCK_END_TIME_CONFIG STRICT_LOCK_FREQUENCY_SEC"
+        ["PRE-SHUTDOWN"]="PRE_SHUTDOWN_ENFORCEMENT_ENABLED PRE_SHUTDOWN_START_TIME PRE_SHUTDOWN_END_TIME PRE_SHUTDOWN_BEEP_INTERVAL_SEC PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC PRE_SHUTDOWN_SHUTDOWN_TIME SHUTDOWN_RETRY_INTERVAL_SEC"
+        ["REMINDERS"]="UNSCHEDULED_REMINDER_ENABLED UNSCHEDULED_REMINDER_INTERVAL_SEC"
+        ["OBSIDIAN"]="OBSIDIAN_VAULT_PATH OBSIDIAN_VAULT_NAME"
+    )
+
+    # Read config into associative array
+    declare -A config_values
+    while IFS= read -r line; do
+        trimmed="${line##+([[:space:]])}"; trimmed="${trimmed%%+([[:space:]])}"
+        [ -z "$trimmed" ] && continue
+        case "$trimmed" in \#*) continue;; esac
+        key="${trimmed%%=*}"; val="${trimmed#*=}"
+        key="${key//[\"'\' ]/}"
+        [ -z "$key" ] && continue
+        val="${val# }"; val="${val%% #*}"; val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
+        config_values["$key"]="$val"
+    done < "$POMODORO_CONFIG_FILE"
+
+    # Print sections
+    for section_name in "${!sections[@]}"; do
+        # Print section header
+        printf "| %-*s | %-*s |\n" $width_key "=== $section_name ===" $width_val ""
+        printf "%s\n" "$border_top"
+        
+        # Print section keys
+        for key in ${sections["$section_name"]}; do
+            if [[ -n "${config_values[$key]}" ]]; then
+                printf "| %-*s | %-*s |\n" $width_key "$key" $width_val "${config_values[$key]}"
+            fi
+        done
+        printf "%s\n" "$border_top"
+    done
+}
+
+# Enable extended pattern matching for trimming helpers
+shopt -s extglob
+
 # -----------------------------------------------------------------------------
 # Configuration Variables
 # -----------------------------------------------------------------------------
@@ -21,9 +76,7 @@ if [ ! -f "$POMODORO_CONFIG_FILE" ]; then
     echo "WORK_DURATION_TEST=\"15s\"" >> "$POMODORO_CONFIG_FILE"
     echo "SHORT_BREAK_DURATION_TEST=\"15s\"" >> "$POMODORO_CONFIG_FILE"
     echo "LONG_BREAK_DURATION_TEST=\"15s\"" >> "$POMODORO_CONFIG_FILE"
-    echo "EVENING_LOCK_ENABLED=\"OFF\"" >> "$POMODORO_CONFIG_FILE"
-    echo "LOCK_START_TIME_CONFIG=\"1930\"" >> "$POMODORO_CONFIG_FILE"
-    echo "LOCK_FREQUENCY_CONFIG=\"10\"" >> "$POMODORO_CONFIG_FILE"
+    # Evening/lock settings are written below in a single consolidated block
 
     # Paths (configurable)
     echo 'STATE_FILE="$POMODORO_DIR/pomodoro_state.json"' >> "$POMODORO_CONFIG_FILE"
@@ -51,7 +104,55 @@ if [ ! -f "$POMODORO_CONFIG_FILE" ]; then
     echo 'PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC="10"' >> "$POMODORO_CONFIG_FILE"
     echo 'PRE_SHUTDOWN_SHUTDOWN_TIME="1945"' >> "$POMODORO_CONFIG_FILE"
     echo 'SHUTDOWN_RETRY_INTERVAL_SEC="60"' >> "$POMODORO_CONFIG_FILE"
+    # (Removed nature sounds default config)
 fi
+normalize_config_in_place() {
+    local cfg="$POMODORO_CONFIG_FILE"
+    [ -f "$cfg" ] || return 0
+    local tmp="${cfg}.tmp"
+    awk '
+        function ltrim(s){ sub(/^[ \t\r]+/, "", s); return s }
+        function rtrim(s){ sub(/[ \t\r]+$/, "", s); return s }
+        function trim(s){ return rtrim(ltrim(s)) }
+        {
+            lines[NR]=$0
+            if ($0 ~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*$/) { types[NR]="other"; next }
+            if (match($0, /^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=/, m)) {
+                key=m[1]
+                key=trim(key)
+                # Skip obsolete nature sounds keys
+                if (key=="NATURE_SOUNDS_ENABLED" || key=="NATURE_SOUNDS_COMMAND" || key=="NATURE_SOUNDS_PID_FILE") { types[NR]="skip"; next }
+                last[key]=NR
+                types[NR]="assign"
+                keys[NR]=key
+            } else {
+                types[NR]="other"
+            }
+        }
+        END {
+            for (i=1;i<=NR;i++) {
+                if (types[i]=="skip") {
+                    continue
+                } else if (types[i]=="assign") {
+                    key=keys[i]
+                    if (last[key]==i) print lines[i]
+                } else {
+                    print lines[i]
+                }
+            }
+        }
+    ' "$cfg" > "$tmp" || return 0
+    if cmp -s "$cfg" "$tmp"; then
+        rm -f "$tmp"
+        return 0
+    fi
+    mkdir -p "$POMODORO_DIR/backups"
+    local ts=$(date +%Y%m%d_%H%M%S)
+    cp "$cfg" "$POMODORO_DIR/backups/pomodoro_config.conf.norm_$ts.bak" 2>/dev/null || true
+    mv "$tmp" "$cfg"
+}
+
+normalize_config_in_place
 source "$POMODORO_CONFIG_FILE"
 
 # Unscheduled Reminder Configuration
@@ -113,12 +214,51 @@ PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC=${PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC:-10}
 PRE_SHUTDOWN_SHUTDOWN_TIME=${PRE_SHUTDOWN_SHUTDOWN_TIME:-1945}
 SHUTDOWN_RETRY_INTERVAL_SEC=${SHUTDOWN_RETRY_INTERVAL_SEC:-60}
 # -------------------------------------
+# --- Maintenance: De-duplicate config entries ---
+cmd_fix_config() {
+    if [ ! -f "$POMODORO_CONFIG_FILE" ]; then
+        echo "Config file not found at $POMODORO_CONFIG_FILE" >&2
+        exit 1
+    fi
+    # Backup
+    mkdir -p "$POMODORO_DIR/backups"
+    local ts=$(date +%Y%m%d_%H%M%S)
+    local backup_path="$POMODORO_DIR/backups/pomodoro_config.conf.bak_$ts"
+    cp "$POMODORO_CONFIG_FILE" "$backup_path" || { echo "Failed to backup config." >&2; exit 1; }
+
+    # De-duplicate: keep first assignment per key; preserve comments/blank lines
+    local tmp_file="${POMODORO_CONFIG_FILE}.tmp"
+    awk '
+        function ltrim(s){ sub(/^[ \t\r]+/, "", s); return s }
+        function rtrim(s){ sub(/[ \t\r]+$/, "", s); return s }
+        function trim(s){ return rtrim(ltrim(s)) }
+        {
+            line=$0
+            # Always keep comments and blank lines
+            if (match(line, /^[[:space:]]*#/)) { print line; next }
+            if (match(line, /^[[:space:]]*$/)) { print line; next }
+            # Match KEY[spaces]= and extract KEY
+            if (match(line, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/)) {
+                key=line
+                sub(/=.*/, "", key)
+                key=trim(key)
+                gsub(/[[:space:]]+/, "", key)
+                if (!(key in seen)) { seen[key]=1; print line }
+                # else skip duplicate assignment
+            } else {
+                print line
+            }
+        }
+    ' "$POMODORO_CONFIG_FILE" > "$tmp_file" && mv "$tmp_file" "$POMODORO_CONFIG_FILE" || { echo "Failed to write cleaned config." >&2; exit 1; }
+    echo "Config de-duplicated. Backup saved at: $backup_path" >&2
+}
 # These variables hold our script's internal state.
 # They are declared globally (without 'local') so they can be accessed by all functions.
 _status=""
 _session_type=""
 _total_pomodoro_cycles_today=0
 _current_session_in_cycle=0
+_total_focus_seconds_today=0
 _current_routine_name="Loading Routine..." # Initial placeholder for routine display
 _current_category_action="Loading Action..." # Placeholder for category/action
 _current_task_name="Loading Task..."
@@ -165,12 +305,14 @@ initialize_state_file() {
         --arg total_cycles "0" \
         --arg current_cycle "0" \
         --arg last_date "$(date +%Y-%m-%d)" \
+            --arg total_focus_seconds_today "0" \
         '{
             "status": $status,
             "session_type": $session_type,
             "total_pomodoro_cycles_today": ($total_cycles | tonumber),
-            "current_session_in_cycle": ($current_cycle | tonumber),
-            "last_run_date": $last_date
+                "current_session_in_cycle": ($current_cycle | tonumber),
+                "last_run_date": $last_date,
+                "total_focus_seconds_today": ($total_focus_seconds_today | tonumber)
         }' > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
     debug_log "State file initialized."
 }
@@ -191,6 +333,7 @@ read_state() {
     _total_pomodoro_cycles_today=$(jq -r '.total_pomodoro_cycles_today' "$STATE_FILE")
     _current_session_in_cycle=$(jq -r '.current_session_in_cycle' "$STATE_FILE")
     _last_run_date=$(jq -r '.last_run_date' "$STATE_FILE")
+    _total_focus_seconds_today=$(jq -r '.total_focus_seconds_today // 0' "$STATE_FILE")
 
     update_current_routine_display_info # NEW: Update routine info every time state is read
     debug_log "read_state: Loaded state: status='$_status', session_type='$_session_type', total_cycles='$_total_pomodoro_cycles_today', current_cycle='$_current_session_in_cycle', last_date='$_last_run_date'"
@@ -210,12 +353,14 @@ write_state() {
         --arg total_cycles "$_total_pomodoro_cycles_today" \
         --arg current_cycle "$_current_session_in_cycle" \
         --arg last_date "$_last_run_date" \
+        --arg total_focus_seconds_today "$_total_focus_seconds_today" \
         '{
             "status": $status,
             "session_type": $session_type,
             "total_pomodoro_cycles_today": ($total_cycles | tonumber),
             "current_session_in_cycle": ($current_cycle | tonumber),
-            "last_run_date": $last_date
+            "last_run_date": $last_date,
+            "total_focus_seconds_today": ($total_focus_seconds_today | tonumber)
         }' > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
     debug_log "write_state: Saved state: status='$_status', session_type='$_session_type', total_cycles='$_total_pomodoro_cycles_today', current_cycle='$_current_session_in_cycle', last_date='$_last_run_date'"
     release_lock # Release lock after this operation
@@ -229,7 +374,10 @@ log_daily_summary() {
     mkdir -p "$(dirname "$DAILY_LOG_FILE")" || { echo "Error: Could not create directory for log file: $(dirname "$DAILY_LOG_FILE")" >&2; return 1; }
 
     # Format the log entry: Log date, then values for the day that *just ended*
-    local log_entry="[$(date "+%Y-%m-%d %H:%M:%S")] Daily Summary for $_last_run_date: Total Pomodoros: $_total_pomodoro_cycles_today, Last Cycle Progress: ${_current_session_in_cycle}/4"
+    local focus_sec="${_total_focus_seconds_today:-0}"
+    local focus_hhmm=$(format_seconds_hhmm "$focus_sec")
+    local focus_min=$((focus_sec/60))
+    local log_entry="[$(date "+%Y-%m-%d %H:%M:%S")] Daily Summary for $_last_run_date: Total Pomodoros: $_total_pomodoro_cycles_today, Last Cycle Progress: ${_current_session_in_cycle}/4, Total Focus: ${focus_hhmm} (${focus_min} min)"
     echo "$log_entry" >> "$DAILY_LOG_FILE"
     debug_log "Logged daily summary for $_last_run_date to $DAILY_LOG_FILE"
 }
@@ -309,6 +457,14 @@ parse_duration_to_minutes_or_seconds() {
     else
         echo "$total_seconds" seconds
     fi
+}
+
+# Formats seconds to HH:MM (hours:minutes) string.
+format_seconds_hhmm() {
+    local total_seconds="${1:-0}"
+    local hours=$(( total_seconds / 3600 ))
+    local minutes=$(( (total_seconds % 3600) / 60 ))
+    printf "%02d:%02d" "$hours" "$minutes"
 }
 
 # NEW: Logs a detailed session event to the Markdown file.
@@ -482,6 +638,8 @@ start_session() {
     _session_type="$type"
     write_state
 
+    # (Removed nature sounds start)
+
     # Log the start of the session
     log_session_event \
         "Start" \
@@ -573,6 +731,9 @@ handle_transition() {
     esac
 
     if [ "$_session_type" == "Work" ]; then
+        # Add completed work duration to today's focus total
+        _total_focus_seconds_today=$((_total_focus_seconds_today + actual_duration_at_finish))
+        write_state
         # Log the completion of the Work session
         log_session_event \
             "End (Completed)" \
@@ -875,6 +1036,10 @@ cmd_stop() {
     esac
 
     pomodoro-cli stop >/dev/null 2>/dev/null
+    # If stopping a Work session, accumulate elapsed time into today's focus total
+    if [ "$session_type_at_stop" == "Work" ] && [ -n "$elapsed_on_stop" ]; then
+        _total_focus_seconds_today=$((_total_focus_seconds_today + elapsed_on_stop))
+    fi
     _status="Stopped"
     _session_type="None" # Reset session type on full stop
     write_state
@@ -893,6 +1058,8 @@ cmd_stop() {
     echo "Pomodoro stopped." >&2 # Redirected to stderr
 
     kill_break_locker # Ensure locker is stopped
+
+    # (Removed nature sounds stop)
 }
 
 # Command to reset the Pomodoro timer and state to default "Stopped" values, but preserves counts.
@@ -917,6 +1084,10 @@ cmd_reset() {
     debug_log "cmd_reset: State after read_state: total_cycles='"$_total_pomodoro_cycles_today"', current_cycle='"$_current_session_in_cycle"'"
 
     pomodoro-cli reset >/dev/null 2>/dev/null
+    # If resetting during a Work session, count elapsed so far towards today's focus
+    if [ "$session_type_at_reset" == "Work" ] && [ -n "$elapsed_on_reset" ]; then
+        _total_focus_seconds_today=$((_total_focus_seconds_today + elapsed_on_reset))
+    fi
 
     # Explicitly define the new status, session type, and last_run_date
     # The counts (_total_pomodoro_cycles_today, _current_session_in_cycle)
@@ -936,12 +1107,14 @@ cmd_reset() {
         --arg total_cycles "$_total_pomodoro_cycles_today" \
         --arg current_cycle "$_current_session_in_cycle" \
         --arg last_run_date "$new_last_run_date" \
+        --arg total_focus_seconds_today "$_total_focus_seconds_today" \
         '{
             "status": $status,
             "session_type": $session_type,
             "total_pomodoro_cycles_today": ($total_cycles | tonumber),
             "current_session_in_cycle": ($current_cycle | tonumber),
-            "last_run_date": $last_run_date
+            "last_run_date": $last_run_date,
+            "total_focus_seconds_today": ($total_focus_seconds_today | tonumber)
         }' > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
     release_lock # Release lock after this explicit write
     debug_log "cmd_reset: State written to file (via inline jq)."
@@ -1279,6 +1452,29 @@ PY
     echo "Web GUI started on http://127.0.0.1:5001/" >&2
 }
 
+# --- Web GUI process management helpers ---
+kill_web_gui_processes() {
+    # Kill by port if possible
+    fuser -k 5001/tcp >/dev/null 2>&1 || true
+    # Kill by script path as fallback
+    pkill -f "$POMODORO_DIR/web_gui/app.py" >/dev/null 2>&1 || true
+    # Kill any venv python that launched app.py
+    pkill -f "venv_pomodoro/.*/python.*web_gui/app.py" >/dev/null 2>&1 || true
+}
+
+cmd_web_stop() {
+    echo "Stopping Web GUI (port 5001)..." >&2
+    kill_web_gui_processes
+    echo "Web GUI stopped." >&2
+}
+
+cmd_web_restart() {
+    echo "Restarting Web GUI..." >&2
+    kill_web_gui_processes
+    # Reuse existing start logic
+    "$0" web-gui
+}
+
 # Daemon to continuously monitor sessions and trigger transitions.
 cmd_daemon() {
     # Check if daemon is already running
@@ -1478,6 +1674,8 @@ cmd_cleanup() {
     rm -f /tmp/pomodoro_obsidian_output.log # NEW: Clean up Obsidian output log
     echo "Cleanup: Temporary log and image files cleared." >&2
 
+    # (Removed nature sounds cleanup)
+
     # Log the cleanup event (after most cleanup actions, but before potential Waybar restart)
     log_session_event \
         "System_Cleanup" \
@@ -1497,7 +1695,103 @@ cmd_cleanup() {
 # --- END NEW FUNCTION ---
 
 # Command to quickly reset, start daemon, and start a new work session.
+render_big_title() {
+    local title="${APP_NAME:-Pomodoro Sentinel}"
+    
+    # Use modern toilet font for clean, professional look
+    if command -v toilet >/dev/null 2>&1; then
+        toilet -f future "$title" 2>/dev/null || toilet "$title" 2>/dev/null
+    elif command -v figlet >/dev/null 2>&1; then
+        figlet -w 120 "$title" 2>/dev/null
+    else
+        printf "\n==================== %s ====================\n" "$title"
+    fi
+}
+
+show_welcome_tui() {
+    clear
+    render_big_title
+    echo "Welcome to Pomodoro Sentinel!"
+    echo "Your CLI + Web GUI Pomodoro companion."
+    echo
+    # Current totals (so far today)
+    local focus_sec="${_total_focus_seconds_today:-0}"
+    local focus_hhmm=$(format_seconds_hhmm "$focus_sec")
+    local focus_min=$((focus_sec/60))
+    echo "Today so far: Focus ${focus_hhmm} (${focus_min} min), Pomodoros ${_total_pomodoro_cycles_today}, Cycle ${_current_session_in_cycle}/4"
+    echo
+    echo "Plan for this session:"
+    echo " - Start background daemon"
+    echo " - Start Web GUI at http://127.0.0.1:5001/ (and open your browser)"
+    echo " - Start first Work session"
+    echo
+    echo "-- Config --"
+    render_config_table_boxed
+
+    echo
+    echo "Now I'll be monitoring the whole day as below. Bye for now!"
+    echo " - Unscheduled reminders every ${UNSCHEDULED_REMINDER_INTERVAL_SEC:-180}s when idle (if enabled)"
+    echo " - Frequent screen lock during breaks every ${LOCK_FREQUENCY_CONFIG:-10}s (after ${BREAK_LOCK_DELAY_SEC:-30}s)"
+    echo " - Evening lock after ${LOCK_START_TIME_CONFIG:-1930} and strict lock until ${STRICT_LOCK_END_TIME_CONFIG:-0700}"
+    echo " - Pre-shutdown warnings ${PRE_SHUTDOWN_START_TIME:-1940}-${PRE_SHUTDOWN_END_TIME:-1945}, then shutdown at ${PRE_SHUTDOWN_SHUTDOWN_TIME:-1945}"
+    echo " - Daily summary + state reset at new day into ${DAILY_LOG_FILE}"
+    echo
+    echo "Press Ctrl+C to abort. Continuing in 2s..."
+    sleep 2
+}
+
+# Prints a brief overview of external tools used and whether they're detected
+print_tool_overview() {
+    printf "Tools involved:\n"
+    printf " - Pomodoro CLI (pomodoro-cli)\n"
+    printf " - Waybar\n"
+    printf " - Obsidian\n"
+    printf " - Hyprland (hyprctl)\n"
+    printf " - Desktop notifications (notify-send)\n"
+    printf " - Audio playback (paplay/aplay)\n"
+    printf " - jq\n"
+    printf " - xdg-open\n"
+    printf " - Python 3\n"
+    printf " - Flask (Web GUI)\n"
+    printf " - loginctl / systemctl\n"
+    printf " - swaylock\n"
+    printf " - yad\n"
+    echo
+}
+
+# Helper to print single tool status; supports commands or simple shell checks
+print_tool() {
+    local label="$1"; shift
+    local found_cmd=""; local check_cmd=""
+    for candidate in "$@"; do
+        case "$candidate" in
+            *"-c"*"import flask"*)
+                if python3 -c 'import flask' >/dev/null 2>&1; then
+                    found_cmd="python3 -m flask"
+                    break
+                fi
+                ;;
+            *)
+                if command -v "$candidate" >/dev/null 2>&1; then
+                    found_cmd="$candidate"; break
+                fi
+                ;;
+        esac
+    done
+    if [ -n "$found_cmd" ]; then
+        local ver
+        ver=$("${found_cmd%% *}" --version 2>/dev/null | head -n1)
+        [ -z "$ver" ] && ver="found"
+        printf " - %-18s : %s\n" "$label" "$ver"
+    else
+        printf " - %-18s : MISSING\n" "$label"
+    fi
+}
+
 cmd_quick_start() {
+    APP_NAME="Pomodoro Sentinel"
+    read_state
+    show_welcome_tui
     echo "Performing quick start: Stopping old daemon, restarting Waybar, starting new daemon, then starting work session..." >&2
     
     # Stop the custom daemon if running
@@ -1516,6 +1810,11 @@ cmd_quick_start() {
     nohup "$0" daemon > /tmp/pomodoro_daemon_output.log 2>&1 &
     echo "Quick Start: Pomodoro daemon launched in background." >&2
     sleep 2 # Give daemon time to fully initialize
+    
+    # Start Web GUI and open browser
+    echo "Quick Start: Launching Web GUI..." >&2
+    "$0" web-gui
+    sleep 1
     
     cmd_start # Start the session as requested.
     echo "Quick start sequence complete." >&2
@@ -1580,6 +1879,12 @@ while [[ "$#" -gt 0 ]]; do
         web-gui)
             COMMAND="web-gui"
             ;;
+        web-stop)
+            COMMAND="web-stop"
+            ;;
+        web-restart)
+            COMMAND="web-restart"
+            ;;
         run-display-block)
             COMMAND="run-display-block"
             # Capture arguments for run-display-block
@@ -1590,7 +1895,7 @@ while [[ "$#" -gt 0 ]]; do
             shift 4 # Shift past the command and its 4 arguments
             ;;
         *)
-            echo "Usage: $0 [--testMode=ON|OFF] [--debug] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui}" >&2
+            echo "Usage: $0 [--testMode=ON|OFF] [--debug] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui|web-stop|web-restart}" >&2
             exit 1
             ;;
     esac
@@ -1618,7 +1923,7 @@ debug_log "Lock frequency set to: $LOCK_FREQUENCY_SEC seconds"
 
 # Execute the command
 if [ -z "$COMMAND" ]; then
-    echo "Usage: $0 [--testMode=ON|OFF] [--debug] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui}" >&2
+    echo "Usage: $0 [--testMode=ON|OFF] [--debug] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui|web-stop|web-restart}" >&2
     exit 1
 fi
 
@@ -1668,6 +1973,12 @@ case "$COMMAND" in
         echo "Web GUI started with PID: $web_gui_pid. Opening browser..." >&2
         xdg-open http://127.0.0.1:5001/ &>/dev/null &
         ;;
+    web-stop)
+        cmd_web_stop
+        ;;
+    web-restart)
+        cmd_web_restart
+        ;;
     run-display-block)
         # This case is no longer actively used by start_session for breaks,\
         # but kept for completeness in case it's called elsewhere or for debug.
@@ -1675,7 +1986,7 @@ case "$COMMAND" in
         ;;
     
     *)
-        echo "Usage: $0 [--testMode=ON|OFF] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui}" >&2
+        echo "Usage: $0 [--testMode=ON|OFF] {start|pause|resume|stop|reset|status|daemon|stop-daemon|cleanup|quick-start|web-gui|web-stop|web-restart}" >&2
         exit 1
         ;;
 esac

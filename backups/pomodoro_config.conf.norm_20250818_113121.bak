@@ -1,0 +1,89 @@
+# =============================================================================
+# POMODORO CLI CONFIGURATION FILE
+# =============================================================================
+
+# =============================================================================
+# TEST MODE SETTINGS
+# =============================================================================
+# Enable/disable test mode for shorter durations during development
+TEST_MODE="OFF"
+
+# =============================================================================
+# POMODORO TIMING CONFIGURATION
+# =============================================================================
+# Default work and break durations (normal mode)
+
+# Test mode durations (shorter for testing)
+
+# =============================================================================
+# BREAK LOCKING CONFIGURATION
+# =============================================================================
+# Grace period before frequent screen locking starts during breaks
+
+# How often to lock the screen during breaks (in seconds)
+LOCK_FREQUENCY_CONFIG="5"
+
+# =============================================================================
+# EVENING DISCIPLINE SETTINGS
+# =============================================================================
+# Enable evening lock enforcement
+EVENING_LOCK_ENABLED="ON"
+
+# Evening lock start time (24-hour format: HHMM)
+LOCK_START_TIME_CONFIG="1930"
+
+# Strict lock settings (more aggressive enforcement)
+STRICT_LOCK_ENABLED="OFF"
+STRICT_LOCK_START_TIME_CONFIG="1945"
+STRICT_LOCK_END_TIME_CONFIG="0700"
+STRICT_LOCK_FREQUENCY_SEC="1"
+
+# Pre-shutdown enforcement settings
+PRE_SHUTDOWN_ENFORCEMENT_ENABLED="OFF"
+PRE_SHUTDOWN_START_TIME="1940"
+PRE_SHUTDOWN_END_TIME="1945"
+PRE_SHUTDOWN_BEEP_INTERVAL_SEC="1"
+PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC="10"
+PRE_SHUTDOWN_SHUTDOWN_TIME="1945"
+SHUTDOWN_RETRY_INTERVAL_SEC="60"
+
+# =============================================================================
+# REMINDER SETTINGS
+# =============================================================================
+# Unscheduled session reminders when no Pomodoro is active
+UNSCHEDULED_REMINDER_ENABLED="ON"
+UNSCHEDULED_REMINDER_INTERVAL_SEC="180"
+
+# =============================================================================
+# OBSIDIAN INTEGRATION
+# =============================================================================
+# Obsidian vault configuration for break notes and logging
+OBSIDIAN_VAULT_PATH="$HOME/obsidian"
+OBSIDIAN_VAULT_NAME="obsidian"
+
+# =============================================================================
+# FILE PATHS (Auto-configured)
+# =============================================================================
+# These paths are automatically set by the script
+STATE_FILE="$POMODORO_DIR/pomodoro_state.json"
+DAILY_LOG_FILE="$POMODORO_DIR/pomodoro_daily_log.txt"
+LOCK_FILE="$POMODORO_DIR/pomodoro_lock"
+DAEMON_PID_FILE="$POMODORO_DIR/pomodoro_daemon.pid"
+BREAK_LOCKER_PID_FILE="$POMODORO_DIR/break_locker.pid"
+SOUND_FILE="$POMODORO_DIR/sounds/beep.wav"
+GET_ROUTINE_SCRIPT="$POMODORO_DIR/RoutineTaskSubTaskScripts/get_current_CategoryAction.sh"
+CURRENT_ROUTINE_FILE="$POMODORO_DIR/RoutineTaskSubTaskScripts/current_routine.txt"
+LAST_ROUTINE_UPDATE_TIME_FILE="$POMODORO_DIR/last_routine_update.timestamp"
+WORK_DURATION="25m"
+SHORT_BREAK_DURATION="5m"
+BREAK_LOCK_DELAY_SEC="30"
+LOCAL_TIMEZONE="IST"
+LONG_BREAK_DURATION="15m"
+WORK_DURATION_DEFAULT="25m"
+SHORT_BREAK_DURATION_DEFAULT="5m"
+SHORT_BREAK_DURATION_TEST="15s"
+LONG_BREAK_DURATION_DEFAULT="15m"
+BREAK_LOCK_DELAY_SEC_TEST="3"
+LONG_BREAK_DURATION_TEST="15s"
+WORK_DURATION_TEST="15s"
+BREAK_LOCK_DELAY_SEC_DEFAULT="30"

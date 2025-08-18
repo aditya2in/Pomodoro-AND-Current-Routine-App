@@ -115,7 +115,9 @@ fi
 normalize_config_in_place() {
     local cfg="$POMODORO_CONFIG_FILE"
     [ -f "$cfg" ] || return 0
-    local tmp="${cfg}.tmp"
+    # Use a unique temp file to avoid races across concurrent invocations
+    local tmp
+    tmp=$(mktemp "${cfg}.tmp.XXXXXX") || { echo "Failed to create temp file for normalization" >&2; return 0; }
     awk '
         function ltrim(s){ sub(/^[ \t\r]+/, "", s); return s }
         function rtrim(s){ sub(/[ \t\r]+$/, "", s); return s }
@@ -148,14 +150,14 @@ normalize_config_in_place() {
             }
         }
     ' "$cfg" > "$tmp" || return 0
-    if cmp -s "$cfg" "$tmp"; then
+    if cmp -s "$cfg" "$tmp" 2>/dev/null; then
         rm -f "$tmp"
         return 0
     fi
     mkdir -p "$POMODORO_DIR/backups"
     local ts=$(date +%Y%m%d_%H%M%S)
     cp "$cfg" "$POMODORO_DIR/backups/pomodoro_config.conf.norm_$ts.bak" 2>/dev/null || true
-    mv "$tmp" "$cfg"
+    mv -f "$tmp" "$cfg" 2>/dev/null || { rm -f "$tmp"; return 0; }
 }
 
 normalize_config_in_place

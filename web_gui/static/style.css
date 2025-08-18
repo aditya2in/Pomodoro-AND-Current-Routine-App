@@ -176,6 +176,7 @@ h1, h2, h3 {
 .daemon-list-container { margin-top: 6px; text-align: left; }
 .daemon-list { margin: 6px 0 0 0; padding-left: 18px; font-size: 0.85em; }
 .daemon-list li { margin: 2px 0; }
+.right-controls .daemon-list-container { margin-top: 0; }
 
 .action-form { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .actions-strip .action-form { flex-wrap: wrap; justify-content: center; }

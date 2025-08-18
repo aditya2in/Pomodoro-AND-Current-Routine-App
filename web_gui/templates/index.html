@@ -50,6 +50,12 @@
             </form>
             <div class="actions-spacer"></div>
             <div class="right-controls">
+                <div class="daemon-list-container">
+                    <details open>
+                        <summary>Processes</summary>
+                        <ul id="daemon-inline-list" class="daemon-list"></ul>
+                    </details>
+                </div>
                 <div class="daemon-inline-info">
                     <span class="daemon-inline-label">Daemons:</span>
                     <span id="daemon-inline-count">0</span>
@@ -59,12 +65,6 @@
                     <button type="submit" name="pomodoro_action" value="stop-daemon">Stop Daemon</button>
                     <button type="submit" name="pomodoro_action" value="restart-daemon">Restart Daemon</button>
                 </form>
-                <div class="daemon-list-container">
-                    <details open>
-                        <summary>Processes</summary>
-                        <ul id="daemon-inline-list" class="daemon-list"></ul>
-                    </details>
-                </div>
             </div>
         </div>
 

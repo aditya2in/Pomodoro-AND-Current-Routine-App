@@ -4,6 +4,7 @@ import shlex
 import subprocess
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 import time
+import threading
 from datetime import datetime
 import zoneinfo  # Python 3.9+ for timezone support
 
@@ -328,18 +329,37 @@ def execute_pomodoro_command(action: str) -> bool:
                 preexec_fn=os.setsid,
             )
         elif action == "restart-daemon":
-            # Restart daemon in background without blocking request
-            delayed = (
-                f"{shlex.quote(POMODORO_MANAGER_SCRIPT)} stop-daemon; "
-                f"sleep 0.3; "
-                f"{shlex.quote(POMODORO_MANAGER_SCRIPT)} daemon"
-            )
-            subprocess.Popen(
-                ["bash", "-lc", delayed],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                preexec_fn=os.setsid,
-            )
+            # Perform a controlled restart in a background thread: stop → wait clear → start → verify
+            def do_restart():
+                try:
+                    # Stop
+                    subprocess.run([POMODORO_MANAGER_SCRIPT, "stop-daemon"], check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # Wait until no processes remain (up to 5s)
+                    deadline = time.time() + 5
+                    while time.time() < deadline:
+                        if not list_daemon_processes():
+                            break
+                        time.sleep(0.2)
+                    # Start
+                    subprocess.Popen([POMODORO_MANAGER_SCRIPT, "daemon"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     preexec_fn=os.setsid)
+                    # Wait until at least one appears (up to 3s)
+                    deadline2 = time.time() + 3
+                    while time.time() < deadline2:
+                        if list_daemon_processes():
+                            break
+                        time.sleep(0.2)
+                    # Second attempt if still not up
+                    if not list_daemon_processes():
+                        subprocess.Popen([POMODORO_MANAGER_SCRIPT, "daemon"],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                         preexec_fn=os.setsid)
+                        time.sleep(0.5)
+                except Exception as e:
+                    app.logger.error(f"restart-daemon background error: {e}")
+            threading.Thread(target=do_restart, daemon=True).start()
         elif action == "daemon":
             # Start the daemon in background so the request does not hang
             subprocess.Popen(

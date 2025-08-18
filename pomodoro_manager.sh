@@ -164,7 +164,10 @@ normalize_config_in_place
 source "$POMODORO_CONFIG_FILE"
 
 # Unscheduled Reminder Configuration
-_last_unscheduled_reminder_timestamp=0 # Timestamp of the last unscheduled reminder
+_last_unscheduled_reminder_timestamp=0 # Per-process timestamp of the last unscheduled reminder
+# Cross-process coordination to prevent duplicate reminders when multiple daemons are running
+REMINDER_LOCK_FILE="${REMINDER_LOCK_FILE:-"$POMODORO_DIR/.unscheduled_reminder.lock"}"
+REMINDER_TIMESTAMP_FILE="${REMINDER_TIMESTAMP_FILE:-"$POMODORO_DIR/.unscheduled_reminder.ts"}"
 
 # Define Obsidian paths using variables from config
 OBSIDIAN_BREAK_NOTE_PATH="$OBSIDIAN_VAULT_PATH/All Things/Journal/Pomodoro session records/POMODORO BREAK FILE.md"
@@ -1505,6 +1508,18 @@ _lunch_break_lock() {
 
 # Daemon to continuously monitor sessions and trigger transitions.
 cmd_daemon() {
+    # Extra guard: avoid multiple daemon instances even if PID file is stale/missing
+    local pids
+    pids=$(pgrep -af "$(basename "$0")\\s+daemon" 2>/dev/null | awk '{print $1}')
+    if [ -n "$pids" ]; then
+        for pid in $pids; do
+            if [ "$pid" != "$$" ] && [ -d "/proc/$pid" ]; then
+                echo "Pomodoro daemon already running (PID: $pid)." >&2
+                return 0
+            fi
+        done
+    fi
+
     # Check if daemon is already running
     if [ -f "$DAEMON_PID_FILE" ] && kill -0 "$(cat "$DAEMON_PID_FILE")" 2>/dev/null; then
         echo "Pomodoro daemon is already running (PID: $(cat "$DAEMON_PID_FILE"))." >&2
@@ -1559,16 +1574,41 @@ cmd_daemon() {
             _lunch_break_lock
         fi
 
-        # NEW: Unscheduled session reminder
+        # NEW: Unscheduled session reminder with cross-process suppression
         if [ "$UNSCHEDULED_REMINDER_ENABLED" == "ON" ]; then
             local current_timestamp=$(date +%s)
             if [ "$_status" == "Stopped" ] || [ "$_status" == "Paused" ]; then
-                if (( current_timestamp - _last_unscheduled_reminder_timestamp >= UNSCHEDULED_REMINDER_INTERVAL_SEC )); then
-                    send_notification "Pomodoro Reminder" "No session active! Time to start a new Work session and be mindful."
-                    _last_unscheduled_reminder_timestamp=$current_timestamp
-                    debug_log "Sent unscheduled session reminder."
+                # Read last global reminder timestamp if available
+                local last_global_ts=0
+                if [ -f "$REMINDER_TIMESTAMP_FILE" ]; then
+                    last_global_ts=$(cat "$REMINDER_TIMESTAMP_FILE" 2>/dev/null || echo 0)
+                fi
+                local elapsed_since_global=$(( current_timestamp - last_global_ts ))
+                local elapsed_since_local=$(( current_timestamp - _last_unscheduled_reminder_timestamp ))
+                if (( elapsed_since_global >= UNSCHEDULED_REMINDER_INTERVAL_SEC && elapsed_since_local >= UNSCHEDULED_REMINDER_INTERVAL_SEC )); then
+                    # Attempt to acquire a simple lock to avoid duplicate notifications across processes
+                    if ( set -o noclobber; echo "$current_timestamp" > "$REMINDER_LOCK_FILE" ) 2>/dev/null; then
+                        trap 'rm -f "$REMINDER_LOCK_FILE"' EXIT
+                        # Double-check global timestamp after acquiring lock to reduce races
+                        if [ -f "$REMINDER_TIMESTAMP_FILE" ]; then
+                            last_global_ts=$(cat "$REMINDER_TIMESTAMP_FILE" 2>/dev/null || echo 0)
+                        fi
+                        elapsed_since_global=$(( current_timestamp - last_global_ts ))
+                        if (( elapsed_since_global >= UNSCHEDULED_REMINDER_INTERVAL_SEC )); then
+                            send_notification "Pomodoro Reminder" "No session active! Time to start a new Work session and be mindful."
+                            echo "$current_timestamp" > "$REMINDER_TIMESTAMP_FILE" 2>/dev/null || true
+                            _last_unscheduled_reminder_timestamp=$current_timestamp
+                            debug_log "Sent unscheduled session reminder (global-coordinated)."
+                        else
+                            debug_log "Another process recently sent a reminder; skipping."
+                        fi
+                        rm -f "$REMINDER_LOCK_FILE" 2>/dev/null || true
+                        trap - EXIT
+                    else
+                        debug_log "Reminder lock held by another process; skipping this tick."
+                    fi
                 else
-                    debug_log "Skipping unscheduled reminder, too soon. Last attempt: $_last_unscheduled_reminder_timestamp"
+                    debug_log "Skipping unscheduled reminder, too soon. Local: $elapsed_since_local s, Global: $elapsed_since_global s"
                 fi
             fi
         else
@@ -1642,7 +1682,17 @@ cmd_stop_daemon() {
             echo "Failed to stop daemon (PID: "$pid"). It might not be running or permission denied." >&2
         fi
     else
-        echo "Pomodoro daemon not running (PID file not found)." >&2
+        echo "Pomodoro daemon PID file not found; attempting pattern-based stop..." >&2
+    fi
+    # Fallback: kill any matching daemon processes
+    local match_pids
+    match_pids=$(pgrep -af "$(basename "$0")\\s+daemon" 2>/dev/null | awk '{print $1}')
+    if [ -n "$match_pids" ]; then
+        for pid in $match_pids; do
+            if kill -TERM "$pid" 2>/dev/null; then
+                echo "Stopped daemon PID $pid via pattern match." >&2
+            fi
+        done
     fi
     kill_break_locker # Fallback to ensure locker is stopped
 }
@@ -1753,6 +1803,16 @@ show_welcome_tui() {
     local focus_min=$((focus_sec/60))
     echo "Today so far: Focus ${focus_hhmm} (${focus_min} min), Pomodoros ${_total_pomodoro_cycles_today}, Cycle ${_current_session_in_cycle}/4"
     echo
+    # --- New Day Checker Panel ---
+    compute_new_day_context
+    echo "[ New Day Checker ]"
+    echo " - Today: ${_nd_today}  |  Last run: ${_nd_last_run_date:-N/A}"
+    echo " - Fresh day: ${_nd_is_fresh_day_text}  |  After reboot: ${_nd_after_reboot_text}"
+    echo " - Sessions today: ${_nd_sessions_today}  |  Focus today: ${_nd_focus_hhmm} (${_nd_focus_min} min)"
+    if [ "${_nd_is_fresh_day}" = "1" ] && [ "${_nd_sessions_today}" = "0" ] && [ -n "${_nd_yesterday_summary}" ]; then
+        echo " - Yesterday: ${_nd_yesterday_summary}"
+    fi
+    echo
     echo "Plan for this session:"
     echo " - Start background daemon"
     echo " - Start Web GUI at http://127.0.0.1:5001/ (and open your browser)"
@@ -1821,10 +1881,62 @@ print_tool() {
     fi
 }
 
+compute_new_day_context() {
+    # Today and last run date
+    _nd_today=$(date +%Y-%m-%d)
+    _nd_last_run_date="${_last_run_date}"
+    _nd_is_fresh_day=0
+    if [ -z "${_nd_last_run_date}" ] || [ "${_nd_last_run_date}" != "${_nd_today}" ]; then
+        _nd_is_fresh_day=1
+    fi
+    _nd_is_fresh_day_text=$([ "$_nd_is_fresh_day" = "1" ] && echo Yes || echo No)
+
+    # Sessions/focus today
+    _nd_sessions_today="${_total_pomodoro_cycles_today:-0}"
+    _nd_focus_hhmm=$(format_seconds_hhmm "${_total_focus_seconds_today:-0}")
+    _nd_focus_min=$(( (${_total_focus_seconds_today:-0}) / 60 ))
+
+    # After reboot detection: compare boot time vs state file mtime
+    _nd_after_reboot_text=Unknown
+    if [ -f "/proc/uptime" ] && [ -f "$STATE_FILE" ]; then
+        # system boot time (epoch) = now - uptime
+        local now_ts=$(date +%s)
+        local uptime_sec=$(cut -d'.' -f1 < /proc/uptime)
+        local boot_ts=$(( now_ts - uptime_sec ))
+        local state_mtime=$(stat -c %Y "$STATE_FILE" 2>/dev/null || echo 0)
+        if [ "$boot_ts" -gt "$state_mtime" ]; then
+            _nd_after_reboot_text=Yes
+        else
+            _nd_after_reboot_text=No
+        fi
+    fi
+
+    # Yesterday summary (last Daily Summary line)
+    _nd_yesterday_summary=""
+    if [ -f "$DAILY_LOG_FILE" ]; then
+        _nd_yesterday_summary=$(tac "$DAILY_LOG_FILE" 2>/dev/null | grep -m1 "Daily Summary" || true)
+    fi
+}
+
 cmd_quick_start() {
     APP_NAME="Pomodoro Sentinel"
     read_state
     show_welcome_tui
+    # Decide whether to auto-start first Work session
+    local should_start_first="yes"
+    compute_new_day_context
+    if [ "${_nd_is_fresh_day}" = "1" ] && [ "${_nd_sessions_today}" = "0" ]; then
+        if [ -t 0 ]; then
+            echo
+            read -r -p "Fresh day detected. Start first Work session now? [Y/n]: " _ans
+            case "${_ans}" in
+                [Nn]*) should_start_first="no" ;;
+                *) should_start_first="yes" ;;
+            esac
+        else
+            should_start_first="yes"
+        fi
+    fi
     echo "Performing quick start: Stopping old daemon, restarting Waybar, starting new daemon, then starting work session..." >&2
     
     # Stop the custom daemon if running
@@ -1849,7 +1961,11 @@ cmd_quick_start() {
     "$0" web-gui
     sleep 1
     
-    cmd_start # Start the session as requested.
+    if [ "${should_start_first}" = "yes" ]; then
+        cmd_start # Start the session as requested.
+    else
+        echo "Quick Start: Skipping first Work session at user request." >&2
+    fi
     echo "Quick start sequence complete." >&2
 }
 

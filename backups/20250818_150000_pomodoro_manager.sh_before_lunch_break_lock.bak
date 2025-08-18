@@ -19,8 +19,7 @@ render_config_table_boxed() {
         ["BREAK LOCKING"]="BREAK_LOCK_DELAY_SEC_DEFAULT BREAK_LOCK_DELAY_SEC_TEST LOCK_FREQUENCY_CONFIG"
         ["EVENING DISCIPLINE"]="EVENING_LOCK_ENABLED LOCK_START_TIME_CONFIG STRICT_LOCK_ENABLED STRICT_LOCK_START_TIME_CONFIG STRICT_LOCK_END_TIME_CONFIG STRICT_LOCK_FREQUENCY_SEC"
         ["PRE-SHUTDOWN"]="PRE_SHUTDOWN_ENFORCEMENT_ENABLED PRE_SHUTDOWN_START_TIME PRE_SHUTDOWN_END_TIME PRE_SHUTDOWN_BEEP_INTERVAL_SEC PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC PRE_SHUTDOWN_SHUTDOWN_TIME SHUTDOWN_RETRY_INTERVAL_SEC"
-        ["LUNCH BREAK"]="LUNCH_BREAK_LOCK_ENABLED LUNCH_BREAK_START_TIME LUNCH_BREAK_END_TIME LUNCH_BREAK_LOCK_FREQUENCY_SEC"
-    ["REMINDERS"]="UNSCHEDULED_REMINDER_ENABLED UNSCHEDULED_REMINDER_INTERVAL_SEC"
+        ["REMINDERS"]="UNSCHEDULED_REMINDER_ENABLED UNSCHEDULED_REMINDER_INTERVAL_SEC"
         ["OBSIDIAN"]="OBSIDIAN_VAULT_PATH OBSIDIAN_VAULT_NAME"
     )
 
@@ -105,11 +104,6 @@ if [ ! -f "$POMODORO_CONFIG_FILE" ]; then
     echo 'PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC="10"' >> "$POMODORO_CONFIG_FILE"
     echo 'PRE_SHUTDOWN_SHUTDOWN_TIME="1945"' >> "$POMODORO_CONFIG_FILE"
     echo 'SHUTDOWN_RETRY_INTERVAL_SEC="60"' >> "$POMODORO_CONFIG_FILE"
-    # NEW: Lunch Break Lock Settings
-    echo 'LUNCH_BREAK_LOCK_ENABLED="ON"' >> "$POMODORO_CONFIG_FILE"
-    echo 'LUNCH_BREAK_START_TIME="1300"' >> "$POMODORO_CONFIG_FILE"
-    echo 'LUNCH_BREAK_END_TIME="1400"' >> "$POMODORO_CONFIG_FILE"
-    echo 'LUNCH_BREAK_LOCK_FREQUENCY_SEC="10"' >> "$POMODORO_CONFIG_FILE"
     # (Removed nature sounds default config)
 fi
 normalize_config_in_place() {
@@ -277,7 +271,6 @@ _last_strict_lock_attempt_timestamp=0
 _last_preshutdown_beep_timestamp=0
 _last_preshutdown_notify_timestamp=0
 _last_shutdown_attempt_timestamp=0
-_last_lunch_lock_attempt_timestamp=0 # NEW: Timestamp of the last lunch lock attempt
 
 
 
@@ -1482,25 +1475,6 @@ cmd_web_restart() {
     "$0" web-gui
 }
 
-# -----------------------------------------------------------------------------
-# Lunch Break Lock Enforcement
-# -----------------------------------------------------------------------------
-_lunch_break_lock() {
-    local START="$LUNCH_BREAK_START_TIME"
-    local END="$LUNCH_BREAK_END_TIME"
-    local NOW=$(date +%H%M)
-    local now_ts=$(date +%s)
-
-    # Check if current time is within the lunch break window
-    if (( NOW >= START && NOW < END )); then
-        if (( now_ts - _last_lunch_lock_attempt_timestamp >= LUNCH_BREAK_LOCK_FREQUENCY_SEC )); then
-            loginctl lock-session
-            _last_lunch_lock_attempt_timestamp=$now_ts
-            debug_log "Lunch break lock enforced at $NOW"
-        fi
-    fi
-}
-
 # Daemon to continuously monitor sessions and trigger transitions.
 cmd_daemon() {
     # Check if daemon is already running
@@ -1509,7 +1483,7 @@ cmd_daemon() {
         exit 0
     fi
 
-    echo $$ > "$DAEMON_PID_FILE" # Store current PID of this daemon process
+    echo $$ > "$DAEMON_PID_FILE" # Store current PID
 
     debug_log "Pomodoro daemon started. Monitoring sessions..."
     # Loop indefinitely to check the timer
@@ -1551,11 +1525,6 @@ cmd_daemon() {
 
         # NEW: Pre-shutdown enforcement 19:31–19:35 and shutdown at 19:35
         _pre_shutdown_enforcement
-
-        # NEW: Lunch Break Lock
-        if [ "$LUNCH_BREAK_LOCK_ENABLED" == "ON" ]; then
-            _lunch_break_lock
-        fi
 
         # NEW: Unscheduled session reminder
         if [ "$UNSCHEDULED_REMINDER_ENABLED" == "ON" ]; then

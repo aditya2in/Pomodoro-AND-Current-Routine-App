@@ -173,11 +173,22 @@ h1, h2, h3 {
 .daemon-status { font-size: 0.9em; color: var(--daemon-status-color); transition: color 0.3s ease; }
 .daemon-status-running { color: var(--daemon-running-color); font-weight: bold; }
 .daemon-status-stopped { color: var(--daemon-stopped-color); font-weight: bold; }
+.daemon-list-container { margin-top: 6px; text-align: left; }
+.daemon-list { margin: 6px 0 0 0; padding-left: 18px; font-size: 0.85em; }
+.daemon-list li { margin: 2px 0; }
 
 .action-form { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .actions-strip .action-form { flex-wrap: wrap; justify-content: center; }
+.actions-strip .action-form-left { justify-content: flex-start; }
 .actions-strip .action-form button,
 .actions-strip .action-form .action-button { white-space: nowrap; }
+.actions-strip.section { display: flex; align-items: center; gap: 12px; }
+.actions-strip .actions-row { flex: 1; }
+.actions-strip .actions-spacer { flex: 1; }
+.actions-strip .right-controls { display: flex; align-items: center; gap: 10px; }
+.actions-strip .action-form-right { justify-content: flex-end; }
+.actions-strip .daemon-inline-info { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.actions-strip .daemon-inline-label { opacity: 0.8; }
 .action-form button, .config-form button, .action-form .action-button { background-color: var(--button-bg); color: var(--button-text); border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85em; transition: background-color 0.2s ease, color 0.2s ease; text-decoration: none; display: inline-block; text-align: center; }
 .action-form button:hover, .config-form button:hover, .action-form .action-button:hover { background-color: var(--button-hover-bg); }
 
@@ -224,11 +235,18 @@ h1, h2, h3 {
   .config-group.other-settings-group { grid-column: 1 / -1; }
 }
 
-.radio-group { display: flex; gap: 10px; align-items: center; }
+.radio-group { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .radio-group input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
-.radio-group label { position: relative; padding-left: 20px; cursor: pointer; color: var(--text-color); font-weight: normal; transition: color 0.3s ease; }
-.radio-group label::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border: 2px solid var(--radio-border); border-radius: 50%; background-color: var(--input-bg); transition: border-color 0.3s ease, background-color 0.3s ease; }
-.radio-group input[type="radio"]:checked + label::after { content: ''; position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 6px; height: 6px; border-radius: 50%; background-color: var(--radio-checked-bg); transition: background-color 0.3s ease; }
+/* Bigger, more clickable custom radios */
+.radio-group label { position: relative; padding-left: 34px; cursor: pointer; color: var(--text-color); font-weight: 600; transition: color 0.2s ease, transform 0.05s ease; line-height: 1.6; min-height: 28px; display: inline-flex; align-items: center; }
+.radio-group label::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border: 2px solid var(--radio-border); border-radius: 50%; background-color: var(--input-bg); box-shadow: 0 1px 2px rgba(0,0,0,0.25) inset; transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease; }
+.radio-group input[type="radio"]:checked + label::after { content: ''; position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background-color: var(--radio-checked-bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--radio-checked-bg) 25%, transparent); transition: background-color 0.2s ease, box-shadow 0.2s ease; }
+/* Hover/focus states */
+.radio-group label:hover::before { border-color: var(--button-hover-bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--button-hover-bg) 25%, transparent); }
+.radio-group input[type="radio"]:focus + label::before { outline: 2px solid var(--button-hover-bg); outline-offset: 2px; }
+.radio-group label:active { transform: scale(0.98); }
+/* Touch friendly spacing */
+.form-row .radio-group, .form-group .radio-group { padding: 4px 2px; }
 
 .default-value { font-size: 0.75em; color: var(--default-value-color); flex: 0 0 90px; transition: color 0.3s ease; }
 .restore-individual-button { padding: 4px 8px; font-size: 0.75em; margin-left: 0; transition: background-color 0.2s ease, color 0.2s ease; }
@@ -255,7 +273,7 @@ input:checked + .slider:before { transform: translateX(20px); }
     .form-row label, .form-group label, .default-value { flex: none; width: 100%; }
     .form-row input[type="text"], .form-group input[type="text"] { width: 100%; }
     .restore-individual-button { margin-left: 0; width: 100%; }
-    .action-form { flex-direction: column; }
+    .action-form { flex-direction: column; align-items: stretch; }
     .action-form button { width: 100%; }
     /* Keep the top actions strip horizontal even on small screens */
     .actions-strip .action-form { flex-direction: row !important; justify-content: center !important; flex-wrap: wrap !important; }

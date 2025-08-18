@@ -308,6 +308,7 @@ def execute_pomodoro_command(action: str) -> bool:
         "status",
         "daemon",
         "stop-daemon",
+        "restart-daemon",
         "cleanup",
         "quick-start",
     }
@@ -322,6 +323,27 @@ def execute_pomodoro_command(action: str) -> bool:
             delayed = f"sleep 1; {shlex.quote(POMODORO_MANAGER_SCRIPT)} {action}"
             subprocess.Popen(
                 ["bash", "-lc", delayed],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid,
+            )
+        elif action == "restart-daemon":
+            # Restart daemon in background without blocking request
+            delayed = (
+                f"{shlex.quote(POMODORO_MANAGER_SCRIPT)} stop-daemon; "
+                f"sleep 0.3; "
+                f"{shlex.quote(POMODORO_MANAGER_SCRIPT)} daemon"
+            )
+            subprocess.Popen(
+                ["bash", "-lc", delayed],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid,
+            )
+        elif action == "daemon":
+            # Start the daemon in background so the request does not hang
+            subprocess.Popen(
+                [POMODORO_MANAGER_SCRIPT, "daemon"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 preexec_fn=os.setsid,
@@ -413,19 +435,72 @@ def index():
 
 
 def get_daemon_status():
+    # Prefer actual processes over PID file
+    procs = list_daemon_processes()
+    if procs:
+        return "Running"
+    # Fallback to PID file if pgrep found nothing
     daemon_pid_file = os.path.join(BASE_DIR, "pomodoro_daemon.pid")
     if os.path.exists(daemon_pid_file):
         try:
             with open(daemon_pid_file, 'r') as f:
-                pid = int(f.read().strip())
-            if os.path.exists(f"/proc/{pid}"):
+                raw = f.read().strip()
+                pid = int(raw) if raw else None
+            if pid and os.path.exists(f"/proc/{pid}"):
                 return "Running"
             else:
-                os.remove(daemon_pid_file)
+                try:
+                    os.remove(daemon_pid_file)
+                except Exception:
+                    pass
                 return "Stopped"
         except (ValueError, IOError):
             return "Stopped"
     return "Stopped"
+
+
+def list_daemon_processes():
+    """Return a list of running pomodoro daemon processes with pid and command."""
+    try:
+        res = subprocess.run(
+            ["pgrep", "-af", r"pomodoro_manager\\.sh.*daemon"],
+            capture_output=True, text=True, check=False
+        )
+        lines = [ln for ln in (res.stdout or "").splitlines() if ln.strip()]
+        processes = []
+        for ln in lines:
+            # Expected: "<pid> <full command>"
+            parts = ln.strip().split(" ", 1)
+            if not parts:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            cmd = parts[1] if len(parts) > 1 else ""
+            processes.append({"pid": pid, "cmd": cmd})
+        # Fallback: include PID from pid file if valid and not already listed
+        try:
+            pid_file = os.path.join(BASE_DIR, "pomodoro_daemon.pid")
+            if os.path.exists(pid_file):
+                with open(pid_file, 'r') as f:
+                    raw = f.read().strip()
+                if raw:
+                    pid = int(raw)
+                    if os.path.exists(f"/proc/{pid}") and all(p.get("pid") != pid for p in processes):
+                        # Read command line
+                        cmd = ""
+                        try:
+                            with open(f"/proc/{pid}/cmdline", 'rb') as cf:
+                                cmd = cf.read().decode('utf-8').replace('\x00', ' ').strip()
+                        except Exception:
+                            cmd = "pomodoro_manager.sh daemon"
+                        processes.append({"pid": pid, "cmd": cmd})
+        except Exception:
+            pass
+        return processes
+    except Exception:
+        return []
 
 
 def get_pomodoro_status():
@@ -450,12 +525,18 @@ def api_status():
     try:
         text = get_pomodoro_status()
         daemon = get_daemon_status()
-        return jsonify({"text": text, "daemon": daemon})
+        daemons = list_daemon_processes()
+        return jsonify({
+            "text": text,
+            "daemon": daemon,
+            "daemon_count": len(daemons),
+            "daemons": daemons,
+        })
     except Exception as e:
         app.logger.error(f"/api/status error: {e}")
-        return jsonify({"text": f"Error: {e}", "daemon": "Unknown"}), 500
+        return jsonify({"text": f"Error: {e}", "daemon": "Unknown", "daemon_count": 0, "daemons": []}), 500
 
 
 if __name__ == '__main__':
     # Run without debug/reloader to avoid duplicate processes when launched from the manager
-    app.run(debug=True, host='127.0.0.1', port=5001)
+    app.run(debug=False, use_reloader=False, host='127.0.0.1', port=5001)

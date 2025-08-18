@@ -16,7 +16,16 @@
                     <div class="status-line" id="status-line">{{ pomodoro_status|safe }}</div>
                     <button type="button" id="refresh-status">Refresh</button>
                 </div>
-                <div class="daemon-status daemon-status-{{ daemon_status | lower }}">Daemon: {{ daemon_status }}</div>
+                <div class="daemon-status daemon-status-{{ daemon_status | lower }}">
+                    Daemon: {{ daemon_status }}
+                    <span id="daemon-count" style="margin-left:8px; font-weight:bold;"></span>
+                </div>
+                <div class="daemon-list-container">
+                    <details open>
+                        <summary>Daemon processes</summary>
+                        <ul id="daemon-list" class="daemon-list"></ul>
+                    </details>
+                </div>
             </div>
             <div class="theme-switch-wrapper">
                 <label class="theme-switch" for="checkbox">
@@ -35,7 +44,7 @@
 
         <!-- Horizontal actions strip under the control panel title -->
         <div class="actions-strip section">
-            <form method="post" class="action-form">
+            <form method="post" class="action-form action-form-left actions-row">
                 <button type="submit" name="pomodoro_action" value="start">Start</button>
                 <button type="submit" name="pomodoro_action" value="pause">Pause</button>
                 <button type="submit" name="pomodoro_action" value="resume">Resume</button>
@@ -43,10 +52,19 @@
                 <button type="submit" name="pomodoro_action" value="reset">Reset</button>
                 <button type="submit" name="pomodoro_action" value="quick-start">Quick Start</button>
                 <button type="submit" name="pomodoro_action" value="cleanup">Cleanup</button>
-                <button type="submit" name="pomodoro_action" value="daemon">Start Daemon</button>
-                <button type="submit" name="pomodoro_action" value="stop-daemon">Stop Daemon</button>
-                
             </form>
+            <div class="actions-spacer"></div>
+            <div class="right-controls">
+                <div class="daemon-inline-info">
+                    <span class="daemon-inline-label">Daemons:</span>
+                    <span id="daemon-inline-count">0</span>
+                </div>
+                <form method="post" class="action-form action-form-right">
+                    <button type="submit" name="pomodoro_action" value="daemon">Start Daemon</button>
+                    <button type="submit" name="pomodoro_action" value="stop-daemon">Stop Daemon</button>
+                    <button type="submit" name="pomodoro_action" value="restart-daemon">Restart Daemon</button>
+                </form>
+            </div>
         </div>
 
         {% if message %}
@@ -360,6 +378,7 @@
     // Manual + periodic status refresh
     const statusEl = document.getElementById('status-line');
     const daemonEl = document.querySelector('.daemon-status');
+    const daemonInlineCountEl = document.getElementById('daemon-inline-count');
     const refreshBtn = document.getElementById('refresh-status');
     async function pollStatus(){
       try {
@@ -371,6 +390,29 @@
           daemonEl.textContent = 'Daemon: ' + data.daemon;
           daemonEl.classList.toggle('daemon-status-running', data.daemon === 'Running');
           daemonEl.classList.toggle('daemon-status-stopped', data.daemon !== 'Running');
+          const countSpan = document.getElementById('daemon-count');
+          if (countSpan && typeof data.daemon_count === 'number') {
+            countSpan.textContent = `(count: ${data.daemon_count})`;
+          }
+        }
+        // Render daemon list
+        const listEl = document.getElementById('daemon-list');
+        if (listEl) {
+          listEl.innerHTML = '';
+          if (Array.isArray(data.daemons) && data.daemons.length) {
+            for (const proc of data.daemons) {
+              const li = document.createElement('li');
+              li.textContent = `${proc.pid} — ${proc.cmd}`;
+              listEl.appendChild(li);
+            }
+          } else {
+            const li = document.createElement('li');
+            li.textContent = 'No daemon processes running';
+            listEl.appendChild(li);
+          }
+        }
+        if (daemonInlineCountEl && typeof data.daemon_count === 'number') {
+          daemonInlineCountEl.textContent = String(data.daemon_count);
         }
       } catch(_) {}
     }

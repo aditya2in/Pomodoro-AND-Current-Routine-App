@@ -78,6 +78,10 @@ A simple shell script sourced by `pomodoro_manager.sh` to define configurable pa
 *   `UNSCHEDULED_REMINDER_INTERVAL_SEC`: How often (in seconds) the unscheduled reminder will be shown if no session is active.
 *   `OBSIDIAN_VAULT_PATH`: Absolute path to the user's Obsidian vault.
 *   `OBSIDIAN_VAULT_NAME`: Name of the Obsidian vault.
+*   `LUNCH_BREAK_LOCK_ENABLED`: "ON" or "OFF" to enable/disable automatic screen locking during lunch break.
+*   `LUNCH_BREAK_START_TIME`: Time (HHMM) when lunch break locking starts (e.g., "1300" for 1:00 PM).
+*   `LUNCH_BREAK_END_TIME`: Time (HHMM) when lunch break locking ends (e.g., "1400" for 2:00 PM).
+*   `LUNCH_BREAK_LOCK_FREQUENCY_SEC`: How often (in seconds) the screen is re-locked during the lunch break.
 *   `DEBUG_ENABLED`: "ON" or "OFF" for verbose debug logging.
 
 ### 3.3 `pomodoro_state.json`
@@ -194,6 +198,7 @@ A log file located at `$POMODORO_DIR/pomodoro_web_gui.log` that captures all deb
         *   Calls `reset_daily_counts` to handle new days.
         *   Checks for and triggers `_evening_lock` if enabled and time permits.
         *   **Unscheduled Reminder:** If no session is active, it periodically sends a desktop notification to remind the user to start a session.
+*   **Lunch Break Lock:** If enabled, it periodically checks the current time and calls `_lunch_break_lock` to enforce screen locking during the configured lunch break window.
         *   Queries `pomodoro-cli` status. If `pomodoro-cli` reports "finished" or "stopped" while the script's internal state is "Running", it calls `handle_transition`.
         *   Plays a continuous warning sound during the last 5 seconds of a session.
         *   Sleeps for 1 second before the next iteration.
@@ -282,6 +287,13 @@ The Pomodoro CLI relies on several external command-line tools:
 1.  **Daemon Active:** `cmd_daemon` is running.
 2.  **Periodic Check:** Every `EVENING_LOCK_INTERVAL_SEC`, `cmd_daemon` calls `_evening_lock`.
 3.  **Time Window:** `_evening_lock` checks if the current time falls within the `LOCK_START_TIME_CONFIG` and `LOCK_END_TIME` range.
+4.  **Lock:** If within the window, `loginctl lock-session` is executed.
+
+### 8.4 Lunch Break Lock
+
+1.  **Daemon Active:** `cmd_daemon` is running.
+2.  **Periodic Check:** Every `LUNCH_BREAK_LOCK_FREQUENCY_SEC`, `cmd_daemon` calls `_lunch_break_lock`.
+3.  **Time Window:** `_lunch_break_lock` checks if the current time falls within the `LUNCH_BREAK_START_TIME` and `LUNCH_BREAK_END_TIME` range.
 4.  **Lock:** If within the window, `loginctl lock-session` is executed.
 
 ---

@@ -1,33 +1,33 @@
 :root {
-    /* Dark Theme Colors (Catppuccin Macchiato-inspired) */
-    --bg-color: #24273a; /* Base */
-    --container-bg: #363a4f; /* Mantle */
-    --section-bg: #494d64; /* Crust */
-    --text-color: #cad3f5; /* Text */
-    --heading-color: #8aadf4; /* Blue */
-    --success-bg: #a6da95; /* Green */
-    --success-text: #181926; /* Overlay0 */
-    --error-bg: #ed8796; /* Red */
-    --error-text: #181926; /* Overlay0 */
-    --pomodoro-status-color: #f5bde6; /* Pink */
-    --daemon-status-color: #c6a0f6; /* Lavender */
-    --daemon-running-color: #a6da95; /* Green */
-    --daemon-stopped-color: #ed8796; /* Red */
-    --button-bg: #8aadf4; /* Blue */
-    --button-text: #181926; /* Overlay0 */
-    --button-hover-bg: #7dc4e4; /* Sky */
-    --config-group-bg: #5b6078; /* Surface1 */
-    --config-heading-color: #a6da95; /* Green */
-    --input-border: #7b7f96; /* Surface2 */
-    --input-bg: #181926; /* Overlay0 */
-    --input-text: #cad3f5; /* Text */
-    --radio-border: #8aadf4; /* Blue */
-    --radio-checked-bg: #8aadf4; /* Blue */
-    --default-value-color: #b8c0e0; /* Subtext0 */
-    --restore-button-bg: #f5bde6; /* Pink */
-    --restore-button-hover-bg: #f0c6c6; /* Rosewater */
-    --restore-all-button-bg: #ed8796; /* Red */
-    --restore-all-button-hover-bg: #e64553; /* Maroon */
+    /* Extreme dark theme */
+    --bg-color: #000000;
+    --container-bg: #0a0a0a;
+    --section-bg: #111111;
+    --text-color: #e6e6e6;
+    --heading-color: #66a3ff;
+    --success-bg: #22c55e; /* green-500 */
+    --success-text: #071b0f;
+    --error-bg: #ef4444; /* red-500 */
+    --error-text: #240607;
+    --pomodoro-status-color: #f5bde6;
+    --daemon-status-color: #c6a0f6;
+    --daemon-running-color: #22c55e;
+    --daemon-stopped-color: #ef4444;
+    --button-bg: #3388ff;
+    --button-text: #0a0a0a;
+    --button-hover-bg: #2f7ae6;
+    --config-group-bg: #151515;
+    --config-heading-color: #22c55e;
+    --input-border: #2a2a2a;
+    --input-bg: #000000;
+    --input-text: #e6e6e6;
+    --radio-border: #66a3ff;
+    --radio-checked-bg: #66a3ff;
+    --default-value-color: #9ca3af;
+    --restore-button-bg: #f5bde6;
+    --restore-button-hover-bg: #f0c6c6;
+    --restore-all-button-bg: #ef4444;
+    --restore-all-button-hover-bg: #dc2626;
 }
 
 /* Global box sizing and overflow safeguards */
@@ -107,6 +107,8 @@ header h1 { margin: 0; text-align: left; }
     flex: 1; 
     text-align: center; 
 }
+.header-right-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.small-actions .action-form button, .small-actions button { padding: 4px 8px; font-size: 0.75em; }
 .header-status h3{ 
     margin: 0 0 6px 0;
     color: var(--heading-color);
@@ -173,6 +175,13 @@ h1, h2, h3 {
 .daemon-status { font-size: 0.9em; color: var(--daemon-status-color); transition: color 0.3s ease; }
 .daemon-status-running { color: var(--daemon-running-color); font-weight: bold; }
 .daemon-status-stopped { color: var(--daemon-stopped-color); font-weight: bold; }
+.daemon-status #daemon-status-text { font-weight: inherit; }
+.blink { animation: blinkBg 400ms ease-in-out 1; border-radius: 4px; }
+@keyframes blinkBg {
+  0% { background-color: transparent; }
+  35% { background-color: rgba(253, 224, 71, 0.35); }
+  100% { background-color: transparent; }
+}
 .daemon-list-container { margin-top: 6px; text-align: left; }
 .daemon-list { margin: 6px 0 0 0; padding-left: 18px; font-size: 0.85em; }
 .daemon-list li { margin: 2px 0; }
@@ -201,7 +210,16 @@ h1, h2, h3 {
 .duration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
 
 /* Use full width and reduce scrolling for the long Other Settings section */
-.other-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; align-items: start; }
+.other-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; align-items: start; grid-auto-flow: dense; }
+.other-settings-grid > .settings-card { order: 10; }
+.other-settings-grid > .card-reminder { order: 1; }
+.other-settings-grid > .card-break { order: 2; }
+.other-settings-grid > .card-lunch { order: 3; }
+.other-settings-grid > .card-evening { order: 4; }
+.other-settings-grid > .card-night { order: 5; }
+.other-settings-grid > .card-pre { order: 6; }
+
+/* Remove grouping header styles */
 .other-settings-group .form-group, .other-settings-group .form-row { margin: 0; }
 .settings-card { border: 1px solid var(--input-border); border-radius: 8px; padding: 10px; background: var(--config-group-bg); }
 .settings-card h3 { margin: 0 0 8px 0; font-size: 1em; color: var(--config-heading-color); border-bottom: 1px solid var(--input-border); padding-bottom: 6px; }
@@ -249,7 +267,22 @@ h1, h2, h3 {
 /* Touch friendly spacing */
 .form-row .radio-group, .form-group .radio-group { padding: 4px 2px; }
 
+/* ON/OFF group background cue using :has (supported in modern browsers) */
+.form-group:has(> .radio-group input[value="ON"]:checked),
+.form-row:has(> .radio-group input[value="ON"]:checked) {
+  background-color: color-mix(in srgb, var(--daemon-running-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--daemon-running-color) 55%, transparent);
+  border-radius: 6px;
+}
+.form-group:has(> .radio-group input[value="OFF"]:checked),
+.form-row:has(> .radio-group input[value="OFF"]:checked) {
+  background-color: color-mix(in srgb, var(--daemon-stopped-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--daemon-stopped-color) 55%, transparent);
+  border-radius: 6px;
+}
+
 .default-value { font-size: 0.75em; color: var(--default-value-color); flex: 0 0 90px; transition: color 0.3s ease; }
+.help-text { display: block; font-size: 0.8em; color: var(--default-value-color); margin-top: 2px; line-height: 1.4; }
 .restore-individual-button { padding: 4px 8px; font-size: 0.75em; margin-left: 0; transition: background-color 0.2s ease, color 0.2s ease; }
 .restore-individual-button:hover { background-color: var(--restore-button-hover-bg); }
 .form-actions { text-align: center; margin-top: 20px; }

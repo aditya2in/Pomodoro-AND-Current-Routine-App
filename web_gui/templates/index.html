@@ -17,24 +17,31 @@
                     <button type="button" id="refresh-status">Refresh</button>
                 </div>
                 <div class="daemon-status daemon-status-{{ daemon_status | lower }}">
-                    Daemon: {{ daemon_status }}
+                    Daemon: <span id="daemon-status-text">{{ daemon_status }}</span>
                     <span id="daemon-count" style="margin-left:8px; font-weight:bold;"></span>
+                </div>
+                <div class="today-stats" style="margin-top:6px; font-size:0.9em; opacity:0.9;">
+                    <span id="today-sessions">Sessions today: —</span>
+                    <span id="today-focus" style="margin-left:12px;">Focus: —</span>
+                    <span id="today-logs" style="margin-left:12px;">Log entries: —</span>
                 </div>
                 
             </div>
-            <div class="theme-switch-wrapper">
-                <label class="theme-switch" for="checkbox">
-                    <input type="checkbox" id="checkbox" />
-                    <div class="slider round"></div>
-                </label>
-                <em>Toggle Dark Mode</em>
-            </div>
-                <div class="actions-strip section" style="margin-top:10px;">
-                    <form method="post" class="action-form">
+            <div class="header-right-controls">
+                <div class="web-ui-controls">
+                    <form method="post" class="action-form small-actions">
                         <button type="submit" name="pomodoro_action" value="web-restart">Restart Web UI</button>
                         <button type="submit" name="pomodoro_action" value="web-stop">Stop Web UI</button>
                     </form>
                 </div>
+                <div class="theme-switch-wrapper">
+                    <label class="theme-switch" for="checkbox">
+                        <input type="checkbox" id="checkbox" />
+                        <div class="slider round"></div>
+                    </label>
+                    <em>Toggle Dark Mode</em>
+                </div>
+            </div>
         </header>
 
         <!-- Horizontal actions strip under the control panel title -->
@@ -165,9 +172,11 @@
                                 <div class="config-group other-settings-group">
                                     <h3>Other Settings</h3>
                                     <div class="other-settings-grid">
-                                        <div class="settings-card">
+                                        
+                                        <div class="settings-card card-evening col-2">
+                                            <h3>Evening Relaxed Lock (IST) (screen locking)</h3>
                                             <div class="form-row">
-                                                <label>Evening Lock Feature (IST):</label>
+                                                <label>Enable:</label>
                                                 <div class="radio-group">
                                                     <input type="radio" id="evening_lock_on" name="EVENING_LOCK_ENABLED" value="ON" {% if current_config["EVENING_LOCK_ENABLED"] == "ON" %}checked{% endif %}>
                                                     <label for="evening_lock_on">ON</label>
@@ -176,9 +185,6 @@
                                                 </div>
                                                 <span class="default-value">Default: ON (Interval: {{ default_config["EVENING_LOCK_INTERVAL_SEC"] }} seconds)</span>
                                             </div>
-                                        </div>
-                                        <div class="settings-card">
-                                            <h3>Evening Lock</h3>
                                             <div class="form-group">
                                                 <label for="LOCK_START_TIME_CONFIG">Start (HHMM):</label>
                                                 <input type="text" id="LOCK_START_TIME_CONFIG" name="LOCK_START_TIME_CONFIG" value="{{ current_config.get('LOCK_START_TIME_CONFIG', '') }}">
@@ -186,16 +192,15 @@
                                                 <button type="submit" name="restore_individual_default" value="LOCK_START_TIME_CONFIG" class="restore-individual-button">Default</button>
                                             </div>
                                             <div class="form-group">
-                                                <label for="LOCK_FREQUENCY_CONFIG">Frequency (s):</label>
-                                                <input type="number" id="LOCK_FREQUENCY_CONFIG" name="LOCK_FREQUENCY_CONFIG" value="{{ current_config.get('LOCK_FREQUENCY_CONFIG', '') }}">
+                                                <label>Frequency (s):</label>
+                                                <span style="color: #888; font-style: italic;">Configured in "Break Screen Lock" section below</span>
                                                 <span class="default-value">Default: {{ default_config.get('LOCK_FREQUENCY_CONFIG', 'N/A') }}</span>
-                                                <button type="submit" name="restore_individual_default" value="LOCK_FREQUENCY_CONFIG" class="restore-individual-button">Default</button>
                                             </div>
                                         </div>
 
                                         
-                                        <div class="settings-card">
-                                            <h3>Strict Lock</h3>
+                                        <div class="settings-card card-night col-2">
+                                            <h3>Night time Hard System Lock</h3>
                                             <div class="form-row">
                                                 <label>Enable:</label>
                                                 <div class="radio-group">
@@ -219,14 +224,14 @@
                                                 <button type="submit" name="restore_individual_default" value="STRICT_LOCK_END_TIME_CONFIG" class="restore-individual-button">Default</button>
                                             </div>
                                             <div class="form-group">
-                                                <label for="STRICT_LOCK_FREQUENCY_SEC">Frequency (s):</label>
+                                                <label for="STRICT_LOCK_FREQUENCY_SEC">Lock frequency (s):</label>
                                                 <input type="number" id="STRICT_LOCK_FREQUENCY_SEC" name="STRICT_LOCK_FREQUENCY_SEC" value="{{ current_config.get('STRICT_LOCK_FREQUENCY_SEC', '') }}">
                                                 <span class="default-value">Default: {{ default_config.get('STRICT_LOCK_FREQUENCY_SEC', 'N/A') }}</span>
                                                 <button type="submit" name="restore_individual_default" value="STRICT_LOCK_FREQUENCY_SEC" class="restore-individual-button">Default</button>
                                             </div>
                                         </div>
 
-                                        <div class="settings-card">
+                                        <div class="settings-card card-pre col-2">
                                             <h3>Pre-shutdown</h3>
                                             <div class="form-row">
                                                 <label>Enable:</label>
@@ -276,8 +281,8 @@
                                             </div>
                                         </div>
 
-                                        <div class="settings-card">
-                                            <h3>Reminders</h3>
+                                        <div class="settings-card card-reminder col-1">
+                                            <h3>Reminder to Start Work</h3>
                                             <div class="form-group">
                                                 <label>Enable:</label>
                                                 <div class="radio-group">
@@ -287,33 +292,129 @@
                                                     <label for="reminder_off">OFF</label>
                                                 </div>
                                                 <span class="default-value">Default: {{ default_config.get('UNSCHEDULED_REMINDER_ENABLED', 'OFF') }}</span>
+                                                <small class="help-text">Shows a desktop notification and plays a short beep when no Pomodoro is running.</small>
                                             </div>
                                             <div class="form-group">
-                                                <label for="UNSCHEDULED_REMINDER_INTERVAL_SEC">Interval (s):</label>
+                                                <label for="UNSCHEDULED_REMINDER_INTERVAL_SEC">Interval (seconds):</label>
                                                 <input type="number" id="UNSCHEDULED_REMINDER_INTERVAL_SEC" name="UNSCHEDULED_REMINDER_INTERVAL_SEC" value="{{ current_config.get('UNSCHEDULED_REMINDER_INTERVAL_SEC', '') }}">
                                                 <span class="default-value">Default: {{ default_config.get('UNSCHEDULED_REMINDER_INTERVAL_SEC', 'N/A') }}</span>
                                                 <button type="submit" name="restore_individual_default" value="UNSCHEDULED_REMINDER_INTERVAL_SEC" class="restore-individual-button">Default</button>
+                                                <small class="help-text">How often to remind you to start a Work session when idle.</small>
                                             </div>
                                         </div>
 
-                                        <div class="settings-card">
-                                            <h3>Break Lock</h3>
+                                        <div class="settings-card card-break col-1">
+                                            <h3>Break Screen Lock (aggressive screen locking)</h3>
                                             <div class="form-row">
                                                 <label>Current Delay (s):</label>
                                                 <span class="default-value">{{ current_config.get('BREAK_LOCK_DELAY_SEC', 'N/A') }}</span>
+                                                <small class="help-text">Grace period after a break starts before frequent locking begins.</small>
                                             </div>
                                             <div class="form-group">
-                                                <label for="LOCK_FREQUENCY_CONFIG">Lock Frequency (s):</label>
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="break_lock_on" name="BREAK_LOCK_ENABLED" value="ON" {% if current_config.get('BREAK_LOCK_ENABLED', 'ON') == 'ON' %}checked{% endif %}>
+                                                    <label for="break_lock_on">ON</label>
+                                                    <input type="radio" id="break_lock_off" name="BREAK_LOCK_ENABLED" value="OFF" {% if current_config.get('BREAK_LOCK_ENABLED', 'ON') == 'OFF' %}checked{% endif %}>
+                                                    <label for="break_lock_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('BREAK_LOCK_ENABLED', 'ON') }}</span>
+                                                <small class="help-text">Master ON/OFF for frequent screen locking during all breaks.</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LOCK_FREQUENCY_CONFIG">Lock frequency (seconds):</label>
                                                 <input type="number" id="LOCK_FREQUENCY_CONFIG" name="LOCK_FREQUENCY_CONFIG" value="{{ current_config.get('LOCK_FREQUENCY_CONFIG', '') }}">
                                                 <span class="default-value">Default: {{ default_config.get('LOCK_FREQUENCY_CONFIG', 'N/A') }}</span>
                                                 <button type="submit" name="restore_individual_default" value="LOCK_FREQUENCY_CONFIG" class="restore-individual-button">Default</button>
+                                                <small class="help-text">How often to enforce screen lock during breaks AND evening enforcement.</small>
                                             </div>
                                             <div class="form-row">
-                                                <span class="default-value">Note: Lock Delay (s) values for Test/Default are at the top in their respective cards. The frequency here is used for both break-time locking and evening enforcement.</span>
+                                                <span class="default-value">Note: Lock Delay values for Test/Default are configured at the top. Frequency here is reused for both break-time locking and evening enforcement.</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Unlock alert during breaks:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="break_unlock_on" name="BREAK_UNLOCK_ALERT_ENABLED" value="ON" {% if current_config.get('BREAK_UNLOCK_ALERT_ENABLED', 'ON') == 'ON' %}checked{% endif %}>
+                                                    <label for="break_unlock_on">ON</label>
+                                                    <input type="radio" id="break_unlock_off" name="BREAK_UNLOCK_ALERT_ENABLED" value="OFF" {% if current_config.get('BREAK_UNLOCK_ALERT_ENABLED', 'ON') == 'OFF' %}checked{% endif %}>
+                                                    <label for="break_unlock_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('BREAK_UNLOCK_ALERT_ENABLED', 'ON') }}</span>
+                                                <small class="help-text">Continuous beep if unlocked during break.</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="BREAK_UNLOCK_BEEP_INTERVAL_SEC">Unlock beep interval (seconds):</label>
+                                                <input type="number" id="BREAK_UNLOCK_BEEP_INTERVAL_SEC" name="BREAK_UNLOCK_BEEP_INTERVAL_SEC" value="{{ current_config.get('BREAK_UNLOCK_BEEP_INTERVAL_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('BREAK_UNLOCK_BEEP_INTERVAL_SEC', '1') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="BREAK_UNLOCK_BEEP_INTERVAL_SEC" class="restore-individual-button">Default</button>
                                             </div>
                                         </div>
 
-                                        <div class="settings-card">
+                                        <div class="settings-card card-lunch col-1">
+                                            <h3>Lunch-time Break Lock (aggressive screen locking)</h3>
+                                            <div class="form-group">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="lunch_lock_on" name="LUNCH_BREAK_LOCK_ENABLED" value="ON" {% if current_config.get('LUNCH_BREAK_LOCK_ENABLED', 'ON') == 'ON' %}checked{% endif %}>
+                                                    <label for="lunch_lock_on">ON</label>
+                                                    <input type="radio" id="lunch_lock_off" name="LUNCH_BREAK_LOCK_ENABLED" value="OFF" {% if current_config.get('LUNCH_BREAK_LOCK_ENABLED', 'ON') == 'OFF' %}checked{% endif %}>
+                                                    <label for="lunch_lock_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('LUNCH_BREAK_LOCK_ENABLED', 'ON') }}</span>
+                                                <small class="help-text">Automatically locks the screen periodically during the lunch window.</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LUNCH_BREAK_START_TIME">Start (HHMM):</label>
+                                                <input type="text" id="LUNCH_BREAK_START_TIME" name="LUNCH_BREAK_START_TIME" value="{{ current_config.get('LUNCH_BREAK_START_TIME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LUNCH_BREAK_START_TIME', '1300') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LUNCH_BREAK_START_TIME" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LUNCH_BREAK_END_TIME">End (HHMM):</label>
+                                                <input type="text" id="LUNCH_BREAK_END_TIME" name="LUNCH_BREAK_END_TIME" value="{{ current_config.get('LUNCH_BREAK_END_TIME', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LUNCH_BREAK_END_TIME', '1330') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LUNCH_BREAK_END_TIME" class="restore-individual-button">Default</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="LUNCH_BREAK_LOCK_FREQUENCY_SEC">Lock frequency (seconds):</label>
+                                                <input type="number" id="LUNCH_BREAK_LOCK_FREQUENCY_SEC" name="LUNCH_BREAK_LOCK_FREQUENCY_SEC" value="{{ current_config.get('LUNCH_BREAK_LOCK_FREQUENCY_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('LUNCH_BREAK_LOCK_FREQUENCY_SEC', '10') }}</span>
+                                                <button type="submit" name="restore_individual_default" value="LUNCH_BREAK_LOCK_FREQUENCY_SEC" class="restore-individual-button">Default</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card col-1">
+                                            <h3>Post-break Reminder Beep</h3>
+                                            <div class="form-group">
+                                                <label>Enable:</label>
+                                                <div class="radio-group">
+                                                    <input type="radio" id="post_break_on" name="POST_BREAK_BEEP_ENABLED" value="ON" {% if current_config.get('POST_BREAK_BEEP_ENABLED', 'ON') == 'ON' %}checked{% endif %}>
+                                                    <label for="post_break_on">ON</label>
+                                                    <input type="radio" id="post_break_off" name="POST_BREAK_BEEP_ENABLED" value="OFF" {% if current_config.get('POST_BREAK_BEEP_ENABLED', 'ON') == 'OFF' %}checked{% endif %}>
+                                                    <label for="post_break_off">OFF</label>
+                                                </div>
+                                                <span class="default-value">Default: {{ default_config.get('POST_BREAK_BEEP_ENABLED', 'ON') }}</span>
+                                                <small class="help-text">Plays a continuous sound after a break ends until you unlock and resume.</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="POST_BREAK_BEEP_FILE">Audio file:</label>
+                                                <input type="text" id="POST_BREAK_BEEP_FILE" name="POST_BREAK_BEEP_FILE" value="{{ current_config.get('POST_BREAK_BEEP_FILE', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('POST_BREAK_BEEP_FILE', '') }}</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="POST_BREAK_BEEP_GAP_SEC">Gap (seconds):</label>
+                                                <input type="number" step="0.00" id="POST_BREAK_BEEP_GAP_SEC" name="POST_BREAK_BEEP_GAP_SEC" value="{{ current_config.get('POST_BREAK_BEEP_GAP_SEC', '') }}">
+                                                <span class="default-value">Default: {{ default_config.get('POST_BREAK_BEEP_GAP_SEC', '0') }}</span>
+                                                <small class="help-text">Set to 0 for continuous playback.</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="POST_BREAK_BEEP_SINK">Preferred sink (optional):</label>
+                                                <input type="text" id="POST_BREAK_BEEP_SINK" name="POST_BREAK_BEEP_SINK" value="{{ current_config.get('POST_BREAK_BEEP_SINK', '') }}">
+                                                <span class="default-value">Default: empty (auto-select external or default)</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-card col-3">
                                             <h3>Nature Sounds</h3>
                                             <div class="form-group">
                                                 <label>Enable:</label>
@@ -333,7 +434,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="settings-card">
+                                        <div class="settings-card col-3">
                                             <h3>Obsidian</h3>
                                             <div class="form-group">
                                                 <label for="OBSIDIAN_VAULT_PATH">Vault Path:</label>
@@ -381,6 +482,10 @@
     const daemonEl = document.querySelector('.daemon-status');
     const daemonInlineCountEl = document.getElementById('daemon-inline-count');
     const refreshBtn = document.getElementById('refresh-status');
+    const sessionsEl = document.getElementById('today-sessions');
+    const focusEl = document.getElementById('today-focus');
+    const logsEl = document.getElementById('today-logs');
+    const logsYesterdayBtn = document.getElementById('logs-yesterday');
     async function pollStatus(){
       try {
         const res = await fetch('/api/status', { cache: 'no-store' });
@@ -388,13 +493,31 @@
         const data = await res.json();
         if (statusEl && data.text !== undefined) statusEl.innerHTML = data.text;
         if (daemonEl && data.daemon) {
-          daemonEl.textContent = 'Daemon: ' + data.daemon;
+          const statusSpan = daemonEl.querySelector('#daemon-status-text');
+          if (statusSpan) statusSpan.textContent = data.daemon;
           daemonEl.classList.toggle('daemon-status-running', data.daemon === 'Running');
           daemonEl.classList.toggle('daemon-status-stopped', data.daemon !== 'Running');
           const countSpan = document.getElementById('daemon-count');
           if (countSpan && typeof data.daemon_count === 'number') {
             countSpan.textContent = `(count: ${data.daemon_count})`;
           }
+          // Blink on refresh to draw attention to the updated status
+          daemonEl.classList.remove('blink');
+          void daemonEl.offsetWidth; // reflow to restart animation
+          daemonEl.classList.add('blink');
+        }
+        // Today stats
+        if (sessionsEl && typeof data.sessions_today === 'number') {
+          sessionsEl.textContent = 'Sessions today: ' + data.sessions_today;
+        }
+        if (focusEl && typeof data.focus_seconds_today === 'number') {
+          const mins = Math.floor((data.focus_seconds_today || 0) / 60);
+          const hh = Math.floor(mins / 60).toString().padStart(2, '0');
+          const mm = (mins % 60).toString().padStart(2, '0');
+          focusEl.textContent = `Focus: ${hh}:${mm}`;
+        }
+        if (logsEl && typeof data.log_entries_today === 'number') {
+          logsEl.textContent = 'Log entries: ' + data.log_entries_today;
         }
         // Render daemon lists (inline/right and header if present)
         const lists = [
@@ -423,6 +546,18 @@
     if (refreshBtn) refreshBtn.addEventListener('click', pollStatus);
     // Poll every 2 seconds
     setInterval(pollStatus, 2000);
+    // Show yesterday's logs on click (simple alert; can be improved later)
+    if (logsYesterdayBtn) logsYesterdayBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/logs?day=yesterday&limit=100');
+        if (!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        const lines = (data.lines || []).join('\n') || 'No entries for yesterday.';
+        alert(lines);
+      } catch (e) {
+        alert('Failed to load yesterday\'s logs.');
+      }
+    });
     </script>
     <script>
     const toggleSwitch = document.querySelector('#checkbox');

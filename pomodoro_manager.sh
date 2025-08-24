@@ -174,6 +174,9 @@ OBSIDIAN_BREAK_NOTE_PATH="$OBSIDIAN_VAULT_PATH/All Things/Journal/Pomodoro sessi
 OBSIDIAN_MARKDOWN_LOG_PATH="$OBSIDIAN_VAULT_PATH/All Things/Journal/Pomodoro session records/POMODORO mark down table data for obsidian Analysis.md"
 MARKDOWN_LOG_FILE="$OBSIDIAN_MARKDOWN_LOG_PATH"
 
+# Daily Journal directory inside the Obsidian vault (can be overridden in config)
+OBSIDIAN_DAILY_JOURNAL_DIR="${OBSIDIAN_DAILY_JOURNAL_DIR:-"$OBSIDIAN_VAULT_PATH/All Things/Journal/Daily Journal"}"
+
 # Debugging Configuration
 DEBUG_MODE="${DEBUG_ENABLED:-OFF}" # Default to OFF, can be overridden by config or --debug
 
@@ -208,6 +211,28 @@ LAST_ROUTINE_UPDATE_TIME_FILE="${LAST_ROUTINE_UPDATE_TIME_FILE:-"$POMODORO_DIR/l
 # ----------------------------------------------
 
 # --- NEW: Break Behavior Configuration ---
+# Master toggle for break-time frequent locking
+BREAK_LOCK_ENABLED=${BREAK_LOCK_ENABLED:-ON}
+
+# During Break Alarm (beeps when you unlock during an active break)
+DURING_BREAK_ALARM_ENABLED=${DURING_BREAK_ALARM_ENABLED:-${BREAK_UNLOCK_ALERT_ENABLED:-ON}}
+DURING_BREAK_ALARM_INTERVAL_SEC=${DURING_BREAK_ALARM_INTERVAL_SEC:-${BREAK_UNLOCK_BEEP_INTERVAL_SEC:-1}}
+DURING_BREAK_ALARM_SOUND_FILE=${DURING_BREAK_ALARM_SOUND_FILE:-${BREAK_UNLOCK_SOUND_FILE:-"$POMODORO_DIR/sounds/beep.wav"}}
+DURING_BREAK_ALARM_SINK=${DURING_BREAK_ALARM_SINK:-${BREAK_UNLOCK_SINK:-""}}
+DURING_BREAK_ALARM_PID_FILE=${DURING_BREAK_ALARM_PID_FILE:-${BREAK_UNLOCK_BEEPER_PID_FILE:-"$POMODORO_DIR/break_unlock_beeper.pid"}}
+
+# Optional bell at break end if user never unlocked during the break
+BREAK_COMPLETION_BELL_ENABLED=${BREAK_COMPLETION_BELL_ENABLED:-ON}
+BREAK_COMPLETION_BELL_FILE=${BREAK_COMPLETION_BELL_FILE:-"$POMODORO_DIR/sounds/bells-notification.mp3"}
+# Target sink for completion bell (empty = auto/external script decides)
+BREAK_COMPLETION_BELL_SINK=${BREAK_COMPLETION_BELL_SINK:-""}
+
+# Post Break Alarm (reminder after break ends until Work starts)
+POST_BREAK_ALARM_ENABLED=${POST_BREAK_ALARM_ENABLED:-${POST_BREAK_BEEP_ENABLED:-ON}}
+POST_BREAK_ALARM_SOUND_FILE=${POST_BREAK_ALARM_SOUND_FILE:-${POST_BREAK_BEEP_FILE:-"$POMODORO_DIR/sounds/bells-notification.mp3"}}
+POST_BREAK_ALARM_GAP_SEC=${POST_BREAK_ALARM_GAP_SEC:-${POST_BREAK_BEEP_GAP_SEC:-0}}
+POST_BREAK_ALARM_PID_FILE=${POST_BREAK_ALARM_PID_FILE:-${POST_BREAK_BEEPER_PID_FILE:-"$POMODORO_DIR/post_break_beeper.pid"}}
+POST_BREAK_ALARM_SINK=${POST_BREAK_ALARM_SINK:-${POST_BREAK_BEEP_SINK:-""}}
 
 
 # --- NEW: Evening Lock Configuration ---
@@ -224,6 +249,9 @@ PRE_SHUTDOWN_BEEP_INTERVAL_SEC=${PRE_SHUTDOWN_BEEP_INTERVAL_SEC:-1}
 PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC=${PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC:-10}
 PRE_SHUTDOWN_SHUTDOWN_TIME=${PRE_SHUTDOWN_SHUTDOWN_TIME:-1945}
 SHUTDOWN_RETRY_INTERVAL_SEC=${SHUTDOWN_RETRY_INTERVAL_SEC:-60}
+# Break unlock alert config (continuous beeps if screen is unlocked during breaks)
+BREAK_UNLOCK_ALERT_ENABLED=${BREAK_UNLOCK_ALERT_ENABLED:-ON}
+BREAK_UNLOCK_BEEP_INTERVAL_SEC=${BREAK_UNLOCK_BEEP_INTERVAL_SEC:-1}
 # -------------------------------------
 # --- Maintenance: De-duplicate config entries ---
 cmd_fix_config() {
@@ -438,12 +466,32 @@ play_sound() {
     fi
 }
 
+# Plays the notification sound multiple times with a small gap
+play_beeps() {
+    local count=${1:-1}
+    local gap_seconds=${2:-0.2}
+    local i
+    for (( i=0; i<count; i++ )); do
+        play_sound
+        if (( i < count-1 )); then
+            sleep "$gap_seconds"
+        fi
+    done
+}
+
 # Sends a desktop notification.
 send_notification() {
     local title="$1"
     local message="$2"
     notify-send "$title" "$message" -t 5000 # -t 5000 for 5 seconds display
     play_sound
+}
+
+# Sends a desktop notification without playing a sound
+send_notification_quiet() {
+    local title="$1"
+    local message="$2"
+    notify-send "$title" "$message" -t 5000
 }
 
 # Converts a duration string (e.g., "10s", "5m") to seconds.
@@ -459,6 +507,19 @@ parse_duration_to_seconds() {
     else
         echo "0" # Return 0 for invalid formats
     fi
+}
+
+# Plays an arbitrary audio file using available backends
+play_audio_file() {
+    local file="$1"
+    if [ -z "$file" ] || [ ! -f "$file" ]; then
+        return 1
+    fi
+    if command -v pw-play >/dev/null 2>&1; then
+        pw-play "$file" >/dev/null 2>&1 || true
+        return 0
+    fi
+    paplay "$file" >/dev/null 2>&1 || aplay "$file" >/dev/null 2>&1 || true
 }
 
 # Converts total seconds back into a user-friendly "X minutes" or "X seconds" string.
@@ -606,14 +667,167 @@ _break_frequent_locker() {
 
     sleep "$BREAK_LOCK_DELAY_SEC" # Grace period before frequent locking begins
 
+    local user_unlocked_during_break=0
     while [ $(date +%s) -lt $end_time ]; do
-        # Lock the session using the system's lock command
+        # Attempt to lock at the start of each cycle
         loginctl lock-session
-        # Wait for the configured lock frequency before the next lock attempt
-        sleep "$LOCK_FREQUENCY_SEC"
+
+        # For the duration of the lock cycle, if the screen is unlocked, run continuous beeper
+        local cycle_start=$(date +%s)
+        local cycle_end=$(( cycle_start + LOCK_FREQUENCY_SEC ))
+
+        # NEW: Wait briefly for lock to take effect to avoid false "unlocked" beeps right after locking
+        local lock_settled=0
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            if _session_is_locked; then lock_settled=1; break; fi
+            sleep 0.1
+        done
+
+        while [ $(date +%s) -lt $end_time ] && [ $(date +%s) -lt $cycle_end ]; do
+            if [ "$DURING_BREAK_ALARM_ENABLED" = "ON" ]; then
+                # Only evaluate after we have confirmed the lock, to avoid early beeps
+                if [ "$lock_settled" -eq 1 ] && ! _session_is_locked; then
+                    user_unlocked_during_break=1
+                    _start_during_break_alarm
+                else
+                    _stop_during_break_alarm
+                fi
+            fi
+            sleep 0.2
+        done
+        # extra safety to stop beeper at end of cycle
+        _stop_during_break_alarm
     done
 
     debug_log "Frequent lock period finished."
+    # At break end, start the post-break alarm only if the screen is locked
+    if _session_is_locked; then
+        _start_post_break_alarm
+    fi
+}
+
+# Returns 0 if the session appears LOCKED; 1 otherwise (unlocked)
+_session_is_locked() {
+    # Prefer systemd LockedHint when available
+    local sid hint
+    sid=$(loginctl list-sessions 2>/dev/null | awk -v u="$USER" '$3==u {print $1; exit}')
+    if [ -n "$sid" ]; then
+        hint=$(loginctl show-session "$sid" -p LockedHint --value 2>/dev/null | tr 'A-Z' 'a-z')
+        if [ "$hint" = "yes" ]; then
+            return 0
+        fi
+    fi
+    # Fallbacks for compositors where LockedHint isn't updated
+    if pgrep -u "$UID" -x hyprlock >/dev/null 2>&1; then return 0; fi
+    if pgrep -u "$UID" -x swaylock >/dev/null 2>&1; then return 0; fi
+    return 1
+}
+
+# Returns 0 if the session appears UNLOCKED; 1 otherwise (locked)
+_session_is_unlocked() {
+    if _session_is_locked; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Attempts to lock the screen and verify it actually locked.
+# Tries loginctl; if not locked, falls back to hyprlock or swaylock when available.
+_lock_screen_now() { loginctl lock-session 2>/dev/null || true; }
+
+# Start a continuous beeper in background while user is unlocked during break
+_start_during_break_alarm() {
+    if [ -f "$DURING_BREAK_ALARM_PID_FILE" ]; then
+        local pid=$(cat "$DURING_BREAK_ALARM_PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    (
+        # Use configured interval; 0 => as fast as possible (near-continuous)
+        local interval="${DURING_BREAK_ALARM_INTERVAL_SEC:-0}"
+        while true; do
+            if command -v pw-play >/dev/null 2>&1; then
+                if [ -n "$DURING_BREAK_ALARM_SINK" ]; then
+                    pw-play --target "$DURING_BREAK_ALARM_SINK" "$DURING_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                else
+                    pw-play "$DURING_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                fi
+            else
+                # Fallbacks when pw-play is unavailable
+                if command -v paplay >/dev/null 2>&1 && [ -n "$DURING_BREAK_ALARM_SINK" ]; then
+                    paplay -d "$DURING_BREAK_ALARM_SINK" "$DURING_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                else
+                    play_sound
+                fi
+            fi
+            # Sleep for configured interval (can be 0 for near-continuous)
+            sleep "$interval"
+        done
+    ) & echo $! > "$DURING_BREAK_ALARM_PID_FILE"
+}
+
+# Stop the continuous beeper if running
+_stop_during_break_alarm() {
+    if [ -f "$DURING_BREAK_ALARM_PID_FILE" ]; then
+        local pid=$(cat "$DURING_BREAK_ALARM_PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$DURING_BREAK_ALARM_PID_FILE"
+    fi
+}
+
+# Post-break beeper: continuous bell until a Work session starts (or user explicitly starts)
+_start_post_break_alarm() {
+    if [ "$POST_BREAK_ALARM_ENABLED" != "ON" ]; then return; fi
+    if [ -f "$POST_BREAK_ALARM_PID_FILE" ]; then
+        local pid=$(cat "$POST_BREAK_ALARM_PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    (
+        while true; do
+            # Stop condition: user has unlocked the session (resumed using the computer)
+            if _session_is_unlocked; then
+                break
+            fi
+            # Prefer paplay to force max volume when available; otherwise use pw-play
+            if [ -f "$POST_BREAK_ALARM_SOUND_FILE" ]; then
+                if command -v paplay >/dev/null 2>&1; then
+                    if [ -n "$POST_BREAK_ALARM_SINK" ]; then
+                        paplay -d "$POST_BREAK_ALARM_SINK" --volume=65536 "$POST_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                    else
+                        paplay --volume=65536 "$POST_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                    fi
+                elif command -v pw-play >/dev/null 2>&1; then
+                    if [ -n "$POST_BREAK_ALARM_SINK" ]; then
+                        pw-play --target "$POST_BREAK_ALARM_SINK" "$POST_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                    else
+                        pw-play "$POST_BREAK_ALARM_SOUND_FILE" >/dev/null 2>&1 || true
+                    fi
+                else
+                    play_audio_file "$POST_BREAK_ALARM_SOUND_FILE"
+                fi
+            else
+                # Fallback to previous mechanism if file is missing
+                play_audio_file "$POST_BREAK_ALARM_SOUND_FILE"
+            fi
+            sleep "${POST_BREAK_ALARM_GAP_SEC}"
+        done
+    ) & echo $! > "$POST_BREAK_ALARM_PID_FILE"
+}
+
+_stop_post_break_alarm() {
+    if [ -f "$POST_BREAK_ALARM_PID_FILE" ]; then
+        local pid=$(cat "$POST_BREAK_ALARM_PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$POST_BREAK_ALARM_PID_FILE"
+    fi
 }
 
 # Kills the break locker process if it is running.
@@ -704,9 +918,13 @@ start_session() {
             debug_log "Fullscreened Obsidian on Workspace 9."
 
             # --- NEW: Use the frequent locker during breaks ---
-            local duration_in_seconds=$(parse_duration_to_seconds "$duration_str")
-            _break_frequent_locker "$duration_in_seconds" &            echo $! > "$BREAK_LOCKER_PID_FILE"
-            debug_log "Started frequent screen lock for the break duration (PID: $(cat "$BREAK_LOCKER_PID_FILE"))."
+            if [ "$BREAK_LOCK_ENABLED" = "ON" ]; then
+                local duration_in_seconds=$(parse_duration_to_seconds "$duration_str")
+                _break_frequent_locker "$duration_in_seconds" & echo $! > "$BREAK_LOCKER_PID_FILE"
+                debug_log "Started frequent screen lock for the break duration (PID: $(cat "$BREAK_LOCKER_PID_FILE" 2>/dev/null))."
+            else
+                debug_log "Break lock disabled by BREAK_LOCK_ENABLED=OFF; skipping frequent locker."
+            fi
             # --- END NEW ---
         else
             echo "Warning: Could not find Obsidian window on Workspace 2 after launch. Skipping window moves." >&2
@@ -784,9 +1002,11 @@ handle_transition() {
         _session_type="None" # Set session type to None to reflect no active session
         write_state
         send_notification "Break Over!" "Time to start a new Work session when you're ready."
+        _start_post_break_alarm
         echo "Break finished. Please start your next Work session manually." >&2 # Debug/info to terminal
 
         kill_break_locker # Stop the frequent locker
+        _stop_during_break_alarm # FIX: Stop the during break alarm too!
 
         # NEW: Revert window manipulation after break
         hyprctl dispatch workspace 9 # Ensure we are on workspace 9
@@ -815,6 +1035,23 @@ handle_transition() {
 
             # Conditionally fullscreen on Workspace 2
             hyprctl dispatch fullscreen 1,address:$target_obsidian_address
+            
+            # Open today's Daily Note in Obsidian if it exists (after returning to WS2)
+            local today_filename="$(date +%F).md"
+            local daily_abs="$OBSIDIAN_DAILY_JOURNAL_DIR/$today_filename"
+            if [ -f "$daily_abs" ]; then
+                debug_log "Post-break: ✅ Daily note found: $today_filename"
+                local relative_daily_path="${daily_abs#$OBSIDIAN_VAULT_PATH/}"
+                local obsidian_daily_uri="obsidian://open?vault=$(urlencode "$OBSIDIAN_VAULT_NAME")&file=$(urlencode "$relative_daily_path")"
+                nohup xdg-open "$obsidian_daily_uri" >/tmp/pomodoro_obsidian_output.log 2>&1 &
+                sleep 0.3
+            else
+                debug_log "Post-break: ❌ No daily note found for today ($today_filename)"
+                # Send notification about missing daily note during post-break
+                notify-send "Pomodoro Daily Note" "No daily note found for today ($(date +'%B %d, %Y')) - Post-break reminder" \
+                    -i calendar -t 5000 -u normal 2>/dev/null || true
+                debug_log "Post-break: 🔔 Notification sent about missing daily note"
+            fi
         fi
 
         _obsidian_break_window_address="" # Clear the address after use
@@ -1070,6 +1307,8 @@ cmd_stop() {
     echo "Pomodoro stopped." >&2 # Redirected to stderr
 
     kill_break_locker # Ensure locker is stopped
+    _stop_during_break_alarm
+    _stop_post_break_alarm
 
     # (Removed nature sounds stop)
 }
@@ -1300,7 +1539,7 @@ _evening_lock() {
     local CURRENT_TIME=$(date +%H%M)
 
     # Check if current time is past LOCK_TIME
-    if (( CURRENT_TIME >= LOCK_START_TIME || CURRENT_TIME < LOCK_END_TIME )); then
+    if (( 10#$CURRENT_TIME >= 10#$LOCK_START_TIME || 10#$CURRENT_TIME < 10#$LOCK_END_TIME )); then
         
 
         debug_log "Evening lock activated. Current time: $CURRENT_TIME, Lock range: $LOCK_START_TIME - $LOCK_END_TIME"
@@ -1318,7 +1557,7 @@ _strict_evening_lock_enforcement() {
     local END="$STRICT_LOCK_END_TIME_CONFIG"
     local NOW=$(date +%H%M)
     # In-range if now >= start OR now < end (overnight span)
-    if (( NOW >= START || NOW < END )); then
+    if (( 10#$NOW >= 10#$START || 10#$NOW < 10#$END )); then
         local now_ts=$(date +%s)
         if (( now_ts - _last_strict_lock_attempt_timestamp >= STRICT_LOCK_FREQUENCY_SEC )); then
             loginctl lock-session
@@ -1537,6 +1776,19 @@ cmd_daemon() {
             source "$POMODORO_CONFIG_FILE"
         fi
 
+        # Re-apply duration mapping based on TEST_MODE after reloading config
+        if [ "$TEST_MODE" == "ON" ]; then
+            BREAK_LOCK_DELAY_SEC="$BREAK_LOCK_DELAY_SEC_TEST"
+            WORK_DURATION="$WORK_DURATION_TEST"
+            SHORT_BREAK_DURATION="$SHORT_BREAK_DURATION_TEST"
+            LONG_BREAK_DURATION="$LONG_BREAK_DURATION_TEST"
+        else
+            BREAK_LOCK_DELAY_SEC="$BREAK_LOCK_DELAY_SEC_DEFAULT"
+            WORK_DURATION="$WORK_DURATION_DEFAULT"
+            SHORT_BREAK_DURATION="$SHORT_BREAK_DURATION_DEFAULT"
+            LONG_BREAK_DURATION="$LONG_BREAK_DURATION_DEFAULT"
+        fi
+
         read_state # Always read the latest state
         reset_daily_counts
         local is_new_day=$?
@@ -1595,7 +1847,9 @@ cmd_daemon() {
                         fi
                         elapsed_since_global=$(( current_timestamp - last_global_ts ))
                         if (( elapsed_since_global >= UNSCHEDULED_REMINDER_INTERVAL_SEC )); then
-                            send_notification "Pomodoro Reminder" "No session active! Time to start a new Work session and be mindful."
+                            # Use silent notification to avoid double-beep and play evenly spaced beeps
+                            send_notification_quiet "Pomodoro Reminder" "No session active! Time to start a new Work session and be mindful."
+                            play_beeps 4 0.4
                             echo "$current_timestamp" > "$REMINDER_TIMESTAMP_FILE" 2>/dev/null || true
                             _last_unscheduled_reminder_timestamp=$current_timestamp
                             debug_log "Sent unscheduled session reminder (global-coordinated)."
@@ -1825,7 +2079,7 @@ show_welcome_tui() {
     echo "Now I'll be monitoring the whole day as below. Bye for now!"
     echo " - Unscheduled reminders every ${UNSCHEDULED_REMINDER_INTERVAL_SEC:-180}s when idle (if enabled)"
     echo " - Frequent screen lock during breaks every ${LOCK_FREQUENCY_CONFIG:-10}s (after ${BREAK_LOCK_DELAY_SEC:-30}s)"
-    echo " - Evening lock after ${LOCK_START_TIME_CONFIG:-1930} and strict lock until ${STRICT_LOCK_END_TIME_CONFIG:-0700}"
+    echo " - Evening relaxed lock after ${LOCK_START_TIME_CONFIG:-1930} and night-time hard lock until ${STRICT_LOCK_END_TIME_CONFIG:-0700}"
     echo " - Pre-shutdown warnings ${PRE_SHUTDOWN_START_TIME:-1940}-${PRE_SHUTDOWN_END_TIME:-1945}, then shutdown at ${PRE_SHUTDOWN_SHUTDOWN_TIME:-1945}"
     echo " - Daily summary + state reset at new day into ${DAILY_LOG_FILE}"
     echo
@@ -1937,6 +2191,118 @@ cmd_quick_start() {
             should_start_first="yes"
         fi
     fi
+    
+    # Check for today's Daily Note in Obsidian vault
+    local today_filename="$(date +%F).md"
+    local daily_abs="$OBSIDIAN_DAILY_JOURNAL_DIR/$today_filename"
+    echo "Quick Start: Checking for today's Daily Note..." >&2
+    
+    if [ -f "$daily_abs" ]; then
+        echo "Quick Start: ✅ Daily note found: $today_filename" >&2
+        # Open today's Daily Note in Obsidian
+        local relative_daily_path="${daily_abs#$OBSIDIAN_VAULT_PATH/}"
+        local obsidian_daily_uri="obsidian://open?vault=$(urlencode "$OBSIDIAN_VAULT_NAME")&file=$(urlencode "$relative_daily_path")"
+        nohup xdg-open "$obsidian_daily_uri" >/tmp/pomodoro_obsidian_daily_output.log 2>&1 &
+        echo "Quick Start: Opening daily note in Obsidian..." >&2
+        sleep 0.5
+    else
+        # Show RED colored error message and pause quick-start
+        echo -e "Quick Start: \033[1;31m❌ No daily note found for today ($today_filename)\033[0m" >&2
+        echo "Quick Start: ⏸️  PAUSING quick-start to create daily note..." >&2
+        
+        # Send notification about missing daily note
+        notify-send "Pomodoro Daily Note" "No daily note found for today ($(date +'%B %d, %Y')) - Opening creator..." \
+            -i calendar -t 5000 -u normal 2>/dev/null || true
+        
+        # Launch the daily note creator script
+        echo "Quick Start: 🚀 Launching daily note creator..." >&2
+        local creator_script="/home/aditya/WEEKDAY_WEEKEND_PLANNER_app/WeekDAYplanner/start_weekdayplanner.sh"
+        
+        if [ -x "$creator_script" ]; then
+            # Start the creator script in background
+            nohup "$creator_script" >/tmp/weekday_planner_output.log 2>&1 &
+            local creator_pid=$!
+            echo "Quick Start: 📝 Daily note creator launched (PID: $creator_pid)" >&2
+            sleep 2 # Give the web app time to start
+            
+            # Monitor the daily journal directory for new file creation
+            echo "Quick Start: 👁️  Monitoring for daily note creation..." >&2
+            echo "Quick Start: 📁 Watching directory: $OBSIDIAN_DAILY_JOURNAL_DIR" >&2
+            
+            local max_wait_time=300  # 5 minutes maximum wait
+            local check_interval=2   # Check every 2 seconds
+            local elapsed_time=0
+            
+            while [ $elapsed_time -lt $max_wait_time ]; do
+                if [ -f "$daily_abs" ]; then
+                    echo -e "Quick Start: \033[1;32m✅ Daily note created successfully: $today_filename\033[0m" >&2
+                    
+                    # Kill the creator script gracefully
+                    if kill -0 "$creator_pid" 2>/dev/null; then
+                        kill "$creator_pid" 2>/dev/null || true
+                        echo "Quick Start: 🛑 Daily note creator stopped" >&2
+                    fi
+                    
+                    # Give a moment for the file to be fully written
+                    sleep 1
+                    
+                    # Open the newly created daily note in Obsidian
+                    local relative_daily_path="${daily_abs#$OBSIDIAN_VAULT_PATH/}"
+                    local obsidian_daily_uri="obsidian://open?vault=$(urlencode "$OBSIDIAN_VAULT_NAME")&file=$(urlencode "$relative_daily_path")"
+                    nohup xdg-open "$obsidian_daily_uri" >/tmp/pomodoro_obsidian_daily_output.log 2>&1 &
+                    echo "Quick Start: 📖 Opening newly created daily note in Obsidian..." >&2
+                    sleep 1
+                    
+                    break
+                fi
+                
+                sleep $check_interval
+                elapsed_time=$((elapsed_time + check_interval))
+                
+                # Show progress every 10 seconds
+                if [ $((elapsed_time % 10)) -eq 0 ]; then
+                    echo "Quick Start: ⏳ Still waiting for daily note creation... (${elapsed_time}s elapsed)" >&2
+                fi
+            done
+            
+            # Check if we timed out
+            if [ $elapsed_time -ge $max_wait_time ]; then
+                echo -e "Quick Start: \033[1;33m⚠️  Timeout waiting for daily note creation (${max_wait_time}s)\033[0m" >&2
+                echo "Quick Start: ❓ Continue without daily note? [Y/n]: " >&2
+                read -r -t 10 continue_answer || continue_answer="Y"
+                case "${continue_answer}" in
+                    [Nn]*) 
+                        echo "Quick Start: 🛑 Aborting quick-start at user request" >&2
+                        return 1
+                        ;;
+                    *) 
+                        echo "Quick Start: ➡️  Continuing without daily note..." >&2
+                        ;;
+                esac
+                
+                # Kill the creator script
+                if kill -0 "$creator_pid" 2>/dev/null; then
+                    kill "$creator_pid" 2>/dev/null || true
+                fi
+            fi
+        else
+            echo -e "Quick Start: \033[1;31m❌ Daily note creator script not found: $creator_script\033[0m" >&2
+            echo "Quick Start: ❓ Continue without daily note? [Y/n]: " >&2
+            read -r -t 10 continue_answer || continue_answer="Y"
+            case "${continue_answer}" in
+                [Nn]*) 
+                    echo "Quick Start: 🛑 Aborting quick-start at user request" >&2
+                    return 1
+                    ;;
+                *) 
+                    echo "Quick Start: ➡️  Continuing without daily note..." >&2
+                    ;;
+            esac
+        fi
+        
+        echo "Quick Start: ✅ Daily note handling complete, resuming quick-start..." >&2
+    fi
+    
     echo "Performing quick start: Stopping old daemon, restarting Waybar, starting new daemon, then starting work session..." >&2
     
     # Stop the custom daemon if running
@@ -1947,7 +2313,7 @@ cmd_quick_start() {
     echo "Quick Start: Restarting Waybar..." >&2
     killall waybar &>/dev/null || true # Kill all existing Waybar instances, suppress errors
     sleep 1 # Give Waybar a moment to terminate
-    waybar & # Start Waybar in the background
+    nohup waybar >/dev/null 2>&1 & disown # Start Waybar quietly and detached
     echo "Quick Start: Waybar restarted." >&2
     sleep 1 # Give Waybar a moment to initialize
     

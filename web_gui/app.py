@@ -87,6 +87,21 @@ DEFAULT_CONFIG = {
     "PRE_SHUTDOWN_NOTIFY_INTERVAL_SEC": "10",
     "PRE_SHUTDOWN_SHUTDOWN_TIME": "1945",
     "THEME_MODE": "dark",
+    # Lunch-time break lock (screen lock window)
+    "LUNCH_BREAK_LOCK_ENABLED": "ON",
+    "LUNCH_BREAK_START_TIME": "1300",
+    "LUNCH_BREAK_END_TIME": "1330",
+    "LUNCH_BREAK_LOCK_FREQUENCY_SEC": "10",
+    # Beep when user unlocks during break until next lock cycle
+    "BREAK_UNLOCK_ALERT_ENABLED": "ON",
+    "BREAK_UNLOCK_BEEP_INTERVAL_SEC": "1",
+    # Master toggle for break-time frequent locking during all breaks
+    "BREAK_LOCK_ENABLED": "ON",
+    # Post-break continuous reminder
+    "POST_BREAK_BEEP_ENABLED": "ON",
+    "POST_BREAK_BEEP_FILE": os.path.join(BASE_DIR, "sounds", "bells-notification.mp3"),
+    "POST_BREAK_BEEP_GAP_SEC": "0",
+    "POST_BREAK_BEEP_SINK": "",
     # Reminders (optional; default OFF)
     "UNSCHEDULED_REMINDER_ENABLED": "OFF",
     "UNSCHEDULED_REMINDER_INTERVAL_SEC": "180",
@@ -546,15 +561,96 @@ def api_status():
         text = get_pomodoro_status()
         daemon = get_daemon_status()
         daemons = list_daemon_processes()
+        # State stats
+        sessions_today, focus_seconds_today = read_state_stats()
+        # Log entries today
+        current_config = get_current_config() or {}
+        daily_log_path = current_config.get("DAILY_LOG_FILE") or DEFAULT_CONFIG.get("DAILY_LOG_FILE")
+        logs_today = count_today_log_entries(daily_log_path)
         return jsonify({
             "text": text,
             "daemon": daemon,
             "daemon_count": len(daemons),
             "daemons": daemons,
+            "sessions_today": sessions_today,
+            "focus_seconds_today": focus_seconds_today,
+            "log_entries_today": logs_today,
         })
     except Exception as e:
         app.logger.error(f"/api/status error: {e}")
-        return jsonify({"text": f"Error: {e}", "daemon": "Unknown", "daemon_count": 0, "daemons": []}), 500
+        return jsonify({
+            "text": f"Error: {e}",
+            "daemon": "Unknown",
+            "daemon_count": 0,
+            "daemons": [],
+            "sessions_today": 0,
+            "focus_seconds_today": 0,
+            "log_entries_today": 0,
+        }), 500
+
+
+@app.get('/api/logs')
+def api_logs():
+    try:
+        day = (request.args.get('day') or 'today').lower()
+        limit = int(request.args.get('limit') or 200)
+        current_config = get_current_config() or {}
+        daily_log_path = current_config.get("DAILY_LOG_FILE") or DEFAULT_CONFIG.get("DAILY_LOG_FILE")
+        lines = get_log_lines_for_day(daily_log_path, day, limit)
+        return jsonify({"day": day, "lines": lines})
+    except Exception as e:
+        app.logger.error(f"/api/logs error: {e}")
+        return jsonify({"day": "unknown", "lines": [], "error": str(e)}), 500
+
+
+def get_log_lines_for_day(log_path: str, day: str, limit: int) -> list:
+    if not log_path or not os.path.exists(log_path):
+        return []
+    if day == 'yesterday':
+        target_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        target_date = datetime.now().strftime('%Y-%m-%d')
+    prefix = f'[{target_date}'
+    matched = []
+    try:
+        with open(log_path, 'r', errors='ignore') as f:
+            for line in f:
+                if line.startswith(prefix):
+                    matched.append(line.rstrip('\n'))
+        # Return up to limit, prefer latest entries
+        if len(matched) > limit:
+            matched = matched[-limit:]
+        return matched
+    except Exception:
+        return []
+
+def read_state_stats():
+    try:
+        if os.path.exists(POMODORO_STATE_FILE):
+            import json as _json
+            with open(POMODORO_STATE_FILE, 'r') as f:
+                data = _json.load(f)
+            sessions = int(data.get('total_pomodoro_cycles_today') or 0)
+            focus_seconds = int(data.get('total_focus_seconds_today') or 0)
+            return sessions, focus_seconds
+    except Exception:
+        pass
+    return 0, 0
+
+
+def count_today_log_entries(log_path: str) -> int:
+    try:
+        if not log_path or not os.path.exists(log_path):
+            return 0
+        today_prefix = datetime.now().strftime('[%Y-%m-%d')
+        count = 0
+        with open(log_path, 'r', errors='ignore') as f:
+            for line in f:
+                if today_prefix in line:
+                    count += 1
+        return count
+    except Exception:
+        return 0
 
 
 if __name__ == '__main__':

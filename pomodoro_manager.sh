@@ -1078,6 +1078,177 @@ handle_transition() {
 # NEW: Routine Integration Functions
 # -----------------------------------------------------------------------------
 
+# Simple manual function to check routine hierarchy - no auto-timing
+check_and_enforce_routine_detection() {
+    echo
+    echo "🎯 [ Complete Routine Hierarchy Detection - MANDATORY ]"
+    echo "======================================================="
+    echo "Required: Minimum 3 of 5 tags (Routine, Category/Action, Task, SubTask, MiniTask)"
+    echo
+    
+    # Initial check
+    echo "🔍 Initial Check: Scanning routine hierarchy..."
+    
+    # Run the routine detection script to update current_routine.txt
+    echo "📊 Running get_current_CategoryAction.sh --quick..."
+    if [ -f "$GET_ROUTINE_SCRIPT" ]; then
+        bash "$GET_ROUTINE_SCRIPT" --quick >/dev/null 2>&1
+    fi
+    
+    # Read the updated routine information from current_routine.txt
+    update_current_routine_display_info
+    
+    # Function to check all 5 components
+    check_hierarchy() {
+        echo "📋 Complete Hierarchy Status Check:"
+        echo "   📂 Reading from: $CURRENT_ROUTINE_FILE"
+        echo
+        
+        # Check ALL 5 components individually
+        local routine_valid=false
+        local category_valid=false
+        local task_valid=false
+        local subtask_valid=false
+        local minitask_valid=false
+        
+        # 1. Check Routine (Line 4)
+        if [[ -n "$_current_routine_name" && "$_current_routine_name" != "No Routine" && "$_current_routine_name" != "Routine File N/A" && "$_current_routine_name" != "Loading Routine..." ]]; then
+            echo "   ✅ 1. Routine: $_current_routine_name"
+            routine_valid=true
+        else
+            echo "   ❌ 1. Routine: Not set ($_current_routine_name)"
+        fi
+        
+        # 2. Check Category/Action (Line 6)
+        if [[ -n "$_current_category_action" && "$_current_category_action" != "No Category or Action" && "$_current_category_action" != "Action File N/A" && "$_current_category_action" != "Loading Action..." ]]; then
+            echo "   ✅ 2. Category/Action: $_current_category_action"
+            category_valid=true
+        else
+            echo "   ❌ 2. Category/Action: Not set ($_current_category_action)"
+        fi
+        
+        # 3. Check Task (Line 8)
+        if [[ -n "$_current_task_name" && "$_current_task_name" != "No Task" && "$_current_task_name" != "Loading Task..." ]]; then
+            echo "   ✅ 3. Task: $_current_task_name"
+            task_valid=true
+        else
+            echo "   ❌ 3. Task: Not set ($_current_task_name)"
+        fi
+        
+        # 4. Check SubTask (Line 10)
+        if [[ -n "$_current_subtask_name" && "$_current_subtask_name" != "No Sub Task" && "$_current_subtask_name" != "Loading SubTask..." ]]; then
+            echo "   ✅ 4. SubTask: $_current_subtask_name"
+            subtask_valid=true
+        else
+            echo "   ❌ 4. SubTask: Not set ($_current_subtask_name)"
+        fi
+        
+        # 5. Check MiniTask (Line 12)
+        if [[ -n "$_current_minitask_name" && "$_current_minitask_name" != "No Mini task" && "$_current_minitask_name" != "Loading MiniTask..." ]]; then
+            echo "   ✅ 5. MiniTask: $_current_minitask_name"
+            minitask_valid=true
+        else
+            echo "   ❌ 5. MiniTask: Not set ($_current_minitask_name)"
+        fi
+        
+        echo
+
+        local valid_tag_count=0
+        if [ "$routine_valid" = true ]; then ((valid_tag_count++)); fi
+        if [ "$category_valid" = true ]; then ((valid_tag_count++)); fi
+        if [ "$task_valid" = true ]; then ((valid_tag_count++)); fi
+        if [ "$subtask_valid" = true ]; then ((valid_tag_count++)); fi
+        if [ "$minitask_valid" = true ]; then ((valid_tag_count++)); fi
+
+        if [ "$valid_tag_count" -ge 3 ]; then
+            echo -e "🎉 \033[1;32mMINIMUM ROUTINE HIERARCHY DETECTED!\033[0m"
+            echo "📋 Full Context Summary:"
+            echo "   🎯 Routine: $_current_routine_name"
+            echo "   📂 Category/Action: $_current_category_action"
+            echo "   📝 Task: $_current_task_name"
+            echo "   🔸 SubTask: $_current_subtask_name"
+            echo "   🔹 MiniTask: $_current_minitask_name"
+            echo
+            echo "✅ Minimum 3 of 5 components found - Ready to proceed with focused Pomodoro session!"
+            return 0
+        fi
+        
+        # Show what's missing
+        echo -e "🚨 \033[1;31mINCOMPLETE ROUTINE HIERARCHY\033[0m"
+        
+        echo "📊 Progress: $valid_tag_count/5 components detected (minimum 3 required)"
+        return 1
+    }
+    
+    # Initial hierarchy check
+    if check_hierarchy; then
+        return 0
+    fi
+    
+    # If incomplete, show setup instructions and open daily note
+    echo
+    echo "📝 Setup Requirements for $(date +%F).md:"
+    echo "   • Active routine with current time ($(date +%H:%M)) in range"
+    echo "   • Complete hierarchy with at least 3 tags:"
+    echo "     - Routine: - [ ] [Name] HH:MM - HH:MM"
+    echo "     - Category: #CurrentCategoryOrAction in routine/subtasks"
+    echo "     - Task: #CurrentTask in routine/subtasks"
+    echo "     - SubTask: #CurrentSubTask in routine/subtasks" 
+    echo "     - MiniTask: #CurrentMiniTask in routine/subtasks"
+    echo
+    echo "💡 Example complete setup:"
+    # Ensure base-10 math for hours and keep zero-padding for end hour
+    echo "   - [ ] Deep Work Session $(date +%H):00 - $(printf '%02d' $(((10#$(date +%H) + 2) % 24))):00"
+    echo "     - [ ] Code Development #CurrentCategoryOrAction"
+    echo "     - [ ] API Implementation #CurrentTask"
+    echo "     - [ ] Authentication Module #CurrentSubTask"
+    echo "     - [ ] JWT Token Validation #CurrentMiniTask"
+    echo
+    
+    # Auto-open daily note in Obsidian
+    local today_filename="$(date +%F).md"
+    local daily_abs="$OBSIDIAN_DAILY_JOURNAL_DIR/$today_filename"
+    
+    echo "📖 Opening daily note in Obsidian for editing..."
+    if [ -f "$daily_abs" ]; then
+        local relative_daily_path="${daily_abs#$OBSIDIAN_VAULT_PATH/}"
+        local obsidian_daily_uri="obsidian://open?vault=$(urlencode "$OBSIDIAN_VAULT_NAME")&file=$(urlencode "$relative_daily_path")"
+        nohup xdg-open "$obsidian_daily_uri" >/tmp/pomodoro_obsidian_daily_output.log 2>&1 &
+        echo "✅ Daily note opened: $today_filename"
+    else
+        echo "❌ Daily note not found: $today_filename"
+    fi
+    echo
+    
+    # Manual retry loop - no auto-checking
+    while true; do
+        echo -e "⌨️  \033[1;36mPress ENTER to check routine hierarchy (or Ctrl+C to exit)\033[0m"
+        read -r
+        
+        echo "🔍 Retry Check: Scanning routine hierarchy..."
+        
+        # Run the routine detection script
+        echo "📊 Running get_current_CategoryAction.sh --quick..."
+        if [ -f "$GET_ROUTINE_SCRIPT" ]; then
+            bash "$GET_ROUTINE_SCRIPT" --quick >/dev/null 2>&1
+        fi
+        
+        # Read updated routine information
+        update_current_routine_display_info
+        
+        # Check hierarchy again
+        if check_hierarchy; then
+            return 0
+        fi
+        
+        echo
+        echo "🔄 Continue editing your routine hierarchy and press ENTER to check again..."
+        echo
+    done
+}
+
+# Note: Tag addition functionality removed as it's handled by get_current_CategoryAction.sh script
+
 # Runs the get_current_CategoryAction.sh script (conditionally) and updates the _current_routine_name global variable.
 update_current_routine_display_info() {
     debug_log "Checking for routine update info..."
@@ -1613,95 +1784,7 @@ _pre_shutdown_enforcement() {
     fi
 }
 
-# -----------------------------------------------------------------------------
-# Inline Web GUI (Flask) - No extra files/directories required
-# -----------------------------------------------------------------------------
-cmd_web_gui_inline() {
-    echo "Starting Pomodoro CLI Web GUI (inline)..." >&2
-    VENV_PATH="$POMODORO_DIR/venv_pomodoro"
-    if [ ! -d "$VENV_PATH" ]; then
-        python3 -m venv "$VENV_PATH" || { echo "Error: Failed to create venv at $VENV_PATH" >&2; exit 1; }
-    fi
 
-    # Ensure Flask is available in the venv
-    "$VENV_PATH/bin/python" -c 'import flask' 2>/dev/null || "$VENV_PATH/bin/pip" install --quiet Flask || {
-        echo "Error: Failed to install Flask in venv." >&2; exit 1;
-    }
-
-    # Export POMODORO_DIR for the Python process
-    export POMODORO_DIR
-
-    # Launch a minimal Flask app from stdin (no files written)
-    nohup "$VENV_PATH/bin/python" - <<'PY' >/dev/null 2>&1 &
-import os
-import json
-import subprocess
-from flask import Flask, request, redirect
-
-app = Flask(__name__)
-
-BASE_DIR = os.environ.get('POMODORO_DIR') or os.getcwd()
-MANAGER = os.path.join(BASE_DIR, 'pomodoro_manager.sh')
-CONFIG = os.path.join(BASE_DIR, 'pomodoro_config.conf')
-
-def read_status_text():
-    try:
-        res = subprocess.run([MANAGER, 'status'], capture_output=True, text=True, check=True)
-        data = json.loads(res.stdout.strip())
-        return data.get('text', 'Unknown')
-    except Exception as e:
-        return f"Error reading status: {e}"
-
-def read_raw_config():
-    try:
-        with open(CONFIG, 'r') as f:
-            return f.read()
-    except Exception as e:
-        return f"Error reading config: {e}"
-
-@app.route('/')
-def index():
-    status_html = read_status_text()
-    cfg = read_raw_config()
-    return f'''<!doctype html>
-<html><head><meta charset="utf-8"><title>Pomodoro CLI</title>
-<style>body{{font-family:sans-serif;margin:24px}} .btn{{padding:8px 12px;margin:4px;background:#89b4fa;color:#000;border:none;border-radius:4px;cursor:pointer}} pre{{background:#111;color:#ddd;padding:12px;border-radius:6px;overflow:auto}}</style>
-</head><body>
-<h2>Pomodoro CLI</h2>
-<div>{status_html}</div>
-<div style="margin-top:12px">
-  <form method="post" action="/action/start" style="display:inline"><button class="btn">Start</button></form>
-  <form method="post" action="/action/pause" style="display:inline"><button class="btn">Pause</button></form>
-  <form method="post" action="/action/resume" style="display:inline"><button class="btn">Resume</button></form>
-  <form method="post" action="/action/stop" style="display:inline"><button class="btn">Stop</button></form>
-  <form method="post" action="/action/reset" style="display:inline"><button class="btn">Reset</button></form>
-  <form method="post" action="/action/daemon" style="display:inline"><button class="btn">Start Daemon</button></form>
-  <form method="post" action="/action/stop-daemon" style="display:inline"><button class="btn">Stop Daemon</button></form>
-  <form method="post" action="/action/cleanup" style="display:inline"><button class="btn">Cleanup</button></form>
-  <form method="post" action="/action/quick-start" style="display:inline"><button class="btn">Quick Start</button></form>
-  <form method="get" action="/" style="display:inline"><button class="btn">Refresh</button></form>
-  </div>
-<h3>Config (read-only)</h3>
-<pre>{cfg}</pre>
-</body></html>'''
-
-@app.post('/action/<cmd>')
-def do_action(cmd):
-    allowed = {'start','pause','resume','stop','reset','status','daemon','stop-daemon','cleanup','quick-start'}
-    if cmd not in allowed:
-        return 'Invalid command', 400
-    try:
-        subprocess.run([MANAGER, cmd], check=False)
-    except Exception:
-        pass
-    return redirect('/')
-
-if __name__ == '__main__':
-    app.run(debug=False, port=5001)
-PY
-
-    echo "Web GUI started on http://127.0.0.1:5001/" >&2
-}
 
 # --- Web GUI process management helpers ---
 kill_web_gui_processes() {
@@ -2057,6 +2140,24 @@ show_welcome_tui() {
     local focus_min=$((focus_sec/60))
     echo "Today so far: Focus ${focus_hhmm} (${focus_min} min), Pomodoros ${_total_pomodoro_cycles_today}, Cycle ${_current_session_in_cycle}/4"
     echo
+    
+    # --- Current Routine Panel ---
+    echo "[ Current Routine Context ]"
+    echo " - Routine: ${_current_routine_name:-Not Set}"
+    if [[ -n "$_current_category_action" && "$_current_category_action" != "No Category or Action" ]]; then
+        echo " - Category/Action: $_current_category_action"
+    fi
+    if [[ -n "$_current_task_name" && "$_current_task_name" != "No Task" ]]; then
+        echo " - Task: $_current_task_name"
+    fi
+    if [[ -n "$_current_subtask_name" && "$_current_subtask_name" != "No Sub Task" ]]; then
+        echo " - SubTask: $_current_subtask_name"
+    fi
+    if [[ -n "$_current_minitask_name" && "$_current_minitask_name" != "No Mini task" ]]; then
+        echo " - MiniTask: $_current_minitask_name"
+    fi
+    echo
+    
     # --- New Day Checker Panel ---
     compute_new_day_context
     echo "[ New Day Checker ]"
@@ -2302,6 +2403,34 @@ cmd_quick_start() {
         
         echo "Quick Start: ✅ Daily note handling complete, resuming quick-start..." >&2
     fi
+    
+    # === NEW: MANDATORY ROUTINE DETECTION ===
+    echo "Quick Start: ✅ Daily note handling complete, now checking routine setup..." >&2
+    
+    if ! check_and_enforce_routine_detection; then
+        echo -e "Quick Start: \033[1;31m❌ Routine setup failed or was cancelled\033[0m" >&2
+        echo "Quick Start: 🛑 Cannot proceed without valid routine configuration" >&2
+        return 1
+    fi
+    
+    echo
+    echo "🎯 === QUICK START SUMMARY ==="
+    echo "✅ Daily Note: Created/Verified"
+    echo "✅ Routine Setup: $_current_routine_name"
+    if [[ -n "$_current_category_action" && "$_current_category_action" != "No Category or Action" ]]; then
+        echo "✅ Category/Action: $_current_category_action"
+    fi
+    if [[ -n "$_current_task_name" && "$_current_task_name" != "No Task" ]]; then
+        echo "✅ Current Task: $_current_task_name"
+    fi
+    if [[ -n "$_current_subtask_name" && "$_current_subtask_name" != "No Sub Task" ]]; then
+        echo "✅ Current SubTask: $_current_subtask_name"
+    fi
+    if [[ -n "$_current_minitask_name" && "$_current_minitask_name" != "No Mini task" ]]; then
+        echo "✅ Current MiniTask: $_current_minitask_name"
+    fi
+    echo "=============================="
+    echo
     
     echo "Performing quick start: Stopping old daemon, restarting Waybar, starting new daemon, then starting work session..." >&2
     

@@ -469,6 +469,34 @@ def index():
                            raw_config_content=read_raw_config_file())
 
 
+def get_startup_service_status():
+    """Get systemd user service status for pomodoro-startup.service"""
+    try:
+        # Check if service is enabled
+        enabled_result = subprocess.run(['systemctl', '--user', 'is-enabled', 'pomodoro-startup.service'], 
+                                      capture_output=True, text=True)
+        is_enabled = enabled_result.stdout.strip() == 'enabled'
+        
+        # Check service status
+        status_result = subprocess.run(['systemctl', '--user', 'status', 'pomodoro-startup.service'], 
+                                     capture_output=True, text=True)
+        status_lines = status_result.stdout.strip().split('\n')
+        
+        # Extract key information
+        loaded_line = next((line for line in status_lines if 'Loaded:' in line), '')
+        active_line = next((line for line in status_lines if 'Active:' in line), '')
+        
+        status_info = {
+            'enabled': is_enabled,
+            'loaded': 'loaded' in loaded_line.lower(),
+            'active': 'active' in active_line.lower(),
+            'status_summary': active_line.strip() if active_line else 'Unknown'
+        }
+        
+        return status_info
+    except Exception as e:
+        return {'error': str(e), 'enabled': False, 'loaded': False, 'active': False}
+
 def get_daemon_status():
     # Prefer actual processes over PID file
     procs = list_daemon_processes()
@@ -561,6 +589,7 @@ def api_status():
         text = get_pomodoro_status()
         daemon = get_daemon_status()
         daemons = list_daemon_processes()
+        startup_service = get_startup_service_status()
         # State stats
         sessions_today, focus_seconds_today = read_state_stats()
         # Log entries today
@@ -572,6 +601,7 @@ def api_status():
             "daemon": daemon,
             "daemon_count": len(daemons),
             "daemons": daemons,
+            "startup_service": startup_service,
             "sessions_today": sessions_today,
             "focus_seconds_today": focus_seconds_today,
             "log_entries_today": logs_today,

@@ -16,6 +16,9 @@
                     <div class="status-line" id="status-line">{{ pomodoro_status|safe }}</div>
                     <button type="button" id="refresh-status">Refresh</button>
                 </div>
+                <div class="startup-service-status" id="startup-service-status" style="margin-top:8px; padding:8px; background:var(--surface0); border-radius:6px; font-size:0.9em;">
+                    <strong>🚀 Startup Service:</strong> <span id="startup-status-text">Loading...</span>
+                </div>
                 <div class="daemon-status daemon-status-{{ daemon_status | lower }}">
                     Daemon: <span id="daemon-status-text">{{ daemon_status }}</span>
                     <span id="daemon-count" style="margin-left:8px; font-weight:bold;"></span>
@@ -540,6 +543,23 @@
         }
         if (daemonInlineCountEl && typeof data.daemon_count === 'number') {
           daemonInlineCountEl.textContent = String(data.daemon_count);
+        }
+        // Update startup service status
+        const startupStatusEl = document.getElementById('startup-status-text');
+        if (startupStatusEl && data.startup_service) {
+          const ss = data.startup_service;
+          if (ss.error) {
+            startupStatusEl.innerHTML = `<span style="color:#f38ba8">❌ Error: ${ss.error}</span>`;
+          } else {
+            const enabledIcon = ss.enabled ? "✅" : "❌";
+            const loadedIcon = ss.loaded ? "✅" : "❌";
+            const activeIcon = ss.active ? "✅" : "❌";
+            startupStatusEl.innerHTML = `
+              ${enabledIcon} Enabled: ${ss.enabled ? 'Yes' : 'No'} | 
+              ${loadedIcon} Loaded: ${ss.loaded ? 'Yes' : 'No'} | 
+              ${activeIcon} Active: ${ss.active ? 'Yes' : 'No'}
+            `;
+          }
         }
       } catch(_) {}
     }

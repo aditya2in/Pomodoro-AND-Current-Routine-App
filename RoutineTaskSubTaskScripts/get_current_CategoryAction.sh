@@ -18,6 +18,12 @@ declare -a GLOBAL_COLLECTED_SUBTASKS
 declare -a GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES
 declare -a GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES
 
+# NEW: Dynamic Considered List Arrays (updated during tag search)
+declare -a DYNAMIC_CONSIDERED_SUBTASKS
+declare -a DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES
+declare -a DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES
+declare -a DYNAMIC_CONSIDERED_DISCOVERED_NOTES
+
 DEBUG_MODE="true" # Default to true for detailed debugging.
 QUICK_MODE="false" # Default to false for full output.
 
@@ -519,6 +525,169 @@ search_for_tags_in_content() {
     return 1 # Indicate that the tag was not found in this content
 }
 
+# --- New Function: Initialize Dynamic Considered List ---
+initialize_dynamic_considered_list() {
+    debug_log "Initializing dynamic considered list from global arrays."
+    
+    # Copy global arrays to dynamic arrays
+    DYNAMIC_CONSIDERED_SUBTASKS=("${GLOBAL_COLLECTED_SUBTASKS[@]}")
+    DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES=("${GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES[@]}")
+    DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES=("${GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES[@]}")
+    DYNAMIC_CONSIDERED_DISCOVERED_NOTES=() # Start empty for newly discovered notes
+    
+    debug_log "Dynamic considered list initialized with ${#DYNAMIC_CONSIDERED_SUBTASKS[@]} subtasks, ${#DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]} routine notes, ${#DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]} subtask notes."
+}
+
+# --- Enhanced Function: Display Current Dynamic Considered List with Visual Flow ---
+display_dynamic_considered_list() {
+    local update_reason="$1"
+    local newly_discovered="$2"
+    
+    # Skip visual output in quick mode
+    if [ "$QUICK_MODE" = "true" ]; then
+        return
+    fi
+    
+    # Create visual separator
+    local separator_line="═══════════════════════════════════════════════════════════════════════════════"
+    
+    log_and_tee "\n${separator_line}"
+    log_and_tee "${YELLOW}🔄 DYNAMIC CONSIDERED LIST UPDATE: ${update_reason}${NC}"
+    log_and_tee "${separator_line}"
+    
+    # Show newly discovered content prominently if provided
+    if [ -n "$newly_discovered" ]; then
+        log_and_tee "${GREEN}✨ JUST DISCOVERED: ${newly_discovered}${NC}"
+        log_and_tee "${GREEN}┌─────────────────────────────────────────────────────────────────────────┐${NC}"
+        log_and_tee "${GREEN}│ This linked note has been added to the considered list for future searches │${NC}"
+        log_and_tee "${GREEN}└─────────────────────────────────────────────────────────────────────────┘${NC}"
+        log_and_tee ""
+    fi
+    
+    # Show current state with enhanced formatting
+    log_and_tee "${CYAN}📊 CURRENT STATE OF DYNAMIC CONSIDERED LIST:${NC}"
+    log_and_tee "${CYAN}┌─────────────────────────────────────────────────────────────────────────┐${NC}"
+    
+    # Show subtasks with enhanced formatting
+    log_and_tee "${CYAN}│${NC} ${BLUE}📋 DYNAMIC SUBTASKS (${#DYNAMIC_CONSIDERED_SUBTASKS[@]} total):${NC}"
+    if [ ${#DYNAMIC_CONSIDERED_SUBTASKS[@]} -gt 0 ]; then
+        for i in "${!DYNAMIC_CONSIDERED_SUBTASKS[@]}"; do
+            local task_info="${DYNAMIC_CONSIDERED_SUBTASKS[$i]}"
+            log_and_tee "${CYAN}│${NC}   ${GREEN}${i}.${NC} ${task_info}"
+        done
+    else
+        log_and_tee "${CYAN}│${NC}   ${YELLOW}ℹ️ No dynamic subtasks${NC}"
+    fi
+    log_and_tee "${CYAN}│${NC}"
+    
+    # Show routine linked notes with enhanced formatting
+    log_and_tee "${CYAN}│${NC} ${BLUE}🔗 DYNAMIC ROUTINE LINKED NOTES (${#DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]} total):${NC}"
+    if [ ${#DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]} -gt 0 ]; then
+        for i in "${!DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]}"; do
+            local note_info="${DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[$i]}"
+            log_and_tee "${CYAN}│${NC}   ${GREEN}${i}.${NC} ${note_info}"
+        done
+    else
+        log_and_tee "${CYAN}│${NC}   ${YELLOW}ℹ️ No dynamic routine linked notes${NC}"
+    fi
+    log_and_tee "${CYAN}│${NC}"
+    
+    # Show subtask linked notes with enhanced formatting
+    log_and_tee "${CYAN}│${NC} ${BLUE}🔗 DYNAMIC SUBTASK LINKED NOTES (${#DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]} total):${NC}"
+    if [ ${#DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]} -gt 0 ]; then
+        for i in "${!DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]}"; do
+            local note_info="${DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[$i]}"
+            log_and_tee "${CYAN}│${NC}   ${GREEN}${i}.${NC} ${note_info}"
+        done
+    else
+        log_and_tee "${CYAN}│${NC}   ${YELLOW}ℹ️ No dynamic subtask linked notes${NC}"
+    fi
+    log_and_tee "${CYAN}│${NC}"
+    
+    # Show newly discovered notes with enhanced formatting
+    log_and_tee "${CYAN}│${NC} ${BLUE}🆕 NEWLY DISCOVERED NOTES (${#DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]} total):${NC}"
+    if [ ${#DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]} -gt 0 ]; then
+        for i in "${!DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]}"; do
+            local note_info="${DYNAMIC_CONSIDERED_DISCOVERED_NOTES[$i]}"
+            log_and_tee "${CYAN}│${NC}   ${GREEN}${i}.${NC} ${note_info}"
+        done
+    else
+        log_and_tee "${CYAN}│${NC}   ${YELLOW}ℹ️ No newly discovered notes${NC}"
+    fi
+    
+    log_and_tee "${CYAN}└─────────────────────────────────────────────────────────────────────────┘${NC}"
+    
+    # Show summary statistics
+    local total_items=$((${#DYNAMIC_CONSIDERED_SUBTASKS[@]} + ${#DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]} + ${#DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]} + ${#DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]}))
+    log_and_tee "${CYAN}📈 SUMMARY: ${total_items} total items in considered list${NC}"
+    
+    # Show what will be searched next
+    log_and_tee "${CYAN}🔍 NEXT: These items will be searched for remaining tags${NC}"
+    log_and_tee "${separator_line}"
+    log_and_tee ""
+}
+
+# --- New Function: Add Newly Discovered Linked Notes to Dynamic List ---
+add_discovered_notes_to_dynamic_list() {
+    local discovered_notes="$1"
+    local source_context="$2"
+    
+    if [ -n "$discovered_notes" ]; then
+        # Extract linked notes using grep
+        local raw_notes=$(echo "$discovered_notes" | grep -oP '\[\[.*?\]\]')
+        if [ -n "$raw_notes" ]; then
+            readarray -t notes_array <<< "$raw_notes"
+            for note_name_raw in "${notes_array[@]}"; do
+                # Check if this note is already in any of our dynamic arrays
+                local already_exists=false
+                
+                # Check in routine linked notes
+                for existing_note in "${DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]}"; do
+                    if echo "$existing_note" | grep -q -- "$note_name_raw"; then
+                        already_exists=true
+                        break
+                    fi
+                done
+                
+                # Check in subtask linked notes
+                if [ "$already_exists" = "false" ]; then
+                    for existing_note in "${DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]}"; do
+                        if echo "$existing_note" | grep -q -- "$note_name_raw"; then
+                            already_exists=true
+                            break
+                        fi
+                    done
+                fi
+                
+                # Check in discovered notes
+                if [ "$already_exists" = "false" ]; then
+                    for existing_note in "${DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]}"; do
+                        if echo "$existing_note" | grep -q -- "$note_name_raw"; then
+                            already_exists=true
+                            break
+                        fi
+                    done
+                fi
+                
+                # Add to discovered notes if not already exists
+                if [ "$already_exists" = "false" ]; then
+                    # Resolve the note path
+                    local resolved_path=$(resolve_obsidian_note_path "$note_name_raw" 2>/dev/null)
+                    local path_info=""
+                    if [ -n "$resolved_path" ]; then
+                        path_info=" (PATH: ${resolved_path})"
+                    else
+                        path_info=" (PATH: Not Found)"
+                    fi
+                    
+                    DYNAMIC_CONSIDERED_DISCOVERED_NOTES+=("DISCOVERED: ${source_context}: 🔗 ${note_name_raw}${path_info}")
+                    debug_log "Added newly discovered note: ${note_name_raw}${path_info}"
+                fi
+            done
+        fi
+    fi
+}
+
 # --- New Function: collect_all_considerations_from_routines ---
 collect_all_considerations_from_routines() {
     debug_log "Entering collect_all_considerations_from_routines function."
@@ -597,6 +766,304 @@ collect_all_considerations_from_routines() {
     debug_log "Exiting collect_all_considerations_from_routines function."
 }
 
+
+# --- New Function: Dynamic Tag Search with Considered List Updates ---
+find_tags_in_dynamic_consideration_list() {
+    debug_log "Entering find_tags_in_dynamic_consideration_list function (DYNAMIC VERSION)."
+    DETAILED_TAG_SEARCH_LOGS=() # Clear logs for this run
+    
+    # Initialize dynamic considered list
+    initialize_dynamic_considered_list
+    display_dynamic_considered_list "Initial State" ""
+    
+    # MODIFIED: Loop through all defined tags in the specified display order
+    for current_search_tag in "${TAG_DISPLAY_ORDER[@]}"; do
+        TAG_FOUND_STATUS["$current_search_tag"]="false"
+        FOUND_TAGS_RESULTS["$current_search_tag"]=""
+        
+        local start_search_msg="  Starting DYNAMIC search for tag: ${current_search_tag}"
+        debug_log "$start_search_msg"
+        DETAILED_TAG_SEARCH_LOGS+=("  ${start_search_msg}")
+        
+        # --- Search Priority 1: Dynamic Subtasks ---
+        local subtasks_search_msg="    Searching in DYNAMIC_CONSIDERED_SUBTASKS for '${current_search_tag}'."
+        debug_log "$subtasks_search_msg"
+        DETAILED_TAG_SEARCH_LOGS+=("    ${subtasks_search_msg}")
+        for entry in "${DYNAMIC_CONSIDERED_SUBTASKS[@]}"; do
+            local line_num_info=$(echo "$entry" | cut -d':' -f1)
+            local routine_name=$(echo "$entry" | cut -d':' -f2 | xargs)
+            local subtask_content=$(echo "$entry" | sed -E 's/^[0-9]+:[^:]+:[[:space:]]*(.*)$/\1/')
+            
+            # Call search_for_tags_in_content with the detailed logging
+            if search_for_tags_in_content "Dynamic Subtask" "$subtask_content" "${routine_name}" "$PLANNER_FILE" "${line_num_info}" "${current_search_tag}"; then
+                local found_in_subtask_msg="      Found '${current_search_tag}' in Dynamic Subtask. Checking for linked notes..."
+                debug_log "$found_in_subtask_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_subtask_msg}")
+                
+                # Check for linked notes in the found content and update dynamic list
+                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                
+                # Display updated considered list if new notes were discovered
+                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                if [ -n "$newly_discovered" ]; then
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                    fi
+                    display_dynamic_considered_list "After finding ${current_search_tag} in subtask" "$newly_discovered"
+                else
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                    fi
+                fi
+                
+                break # Exit inner loop for this tag, proceed to next tag in TAG_DISPLAY_ORDER
+            fi
+        done
+        # If tag was found in subtasks, continue to the next tag in TAG_DISPLAY_ORDER
+        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
+            continue
+        fi
+        
+        # --- Search Priority 2: Dynamic Routine Linked Notes ---
+        local routine_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES for '${current_search_tag}'."
+        debug_log "$routine_notes_search_msg"
+        DETAILED_TAG_SEARCH_LOGS+=("    ${routine_notes_search_msg}")
+        for entry in "${DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]}"; do
+            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
+            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
+            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
+            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
+            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
+            
+            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
+            debug_log "$resolve_msg"
+            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
+            
+            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
+            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
+            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
+                local file_found_msg="        - Linked note file found: ${linked_note_path}"
+                debug_log "$file_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
+                local note_content=$(<"$linked_note_path")
+                if search_for_tags_in_content "Dynamic Routine Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
+                    local found_in_file_msg="      Found '${current_search_tag}' in Dynamic Routine Linked Note file. Checking for linked notes..."
+                    debug_log "$found_in_file_msg"
+                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
+                    
+                    # Check for linked notes in the found content and update dynamic list
+                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                    
+                    # Display updated considered list if new notes were discovered
+                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                    if [ -n "$newly_discovered" ]; then
+                        if [ "$QUICK_MODE" != "true" ]; then
+                            if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                        fi
+                        display_dynamic_considered_list "After finding ${current_search_tag} in routine linked note" "$newly_discovered"
+                    else
+                        if [ "$QUICK_MODE" != "true" ]; then
+                            if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                        fi
+                    fi
+                    
+                    break
+                fi
+            else
+                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
+                debug_log "$file_not_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
+            fi
+            
+            # Also search in the raw collected note string itself
+            if search_for_tags_in_content "Dynamic Routine Name (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
+                local found_in_ref_msg="      Found '${current_search_tag}' in Dynamic Routine Linked Note reference string. Checking for linked notes..."
+                debug_log "$found_in_ref_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
+                
+                # Check for linked notes in the found content and update dynamic list
+                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                
+                # Display updated considered list if new notes were discovered
+                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                if [ -n "$newly_discovered" ]; then
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                    display_dynamic_considered_list "After finding ${current_search_tag} in routine note reference" "$newly_discovered"
+                else
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                fi
+                
+                break
+            fi
+        done
+        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
+        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
+            continue
+        fi
+        
+        # --- Search Priority 3: Dynamic Subtask Linked Notes ---
+        local subtask_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES for '${current_search_tag}'."
+        debug_log "$subtask_notes_search_msg"
+        DETAILED_TAG_SEARCH_LOGS+=("    ${subtask_notes_search_msg}")
+        for entry in "${DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]}"; do
+            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
+            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
+            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
+            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
+            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
+            
+            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
+            debug_log "$resolve_msg"
+            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
+            
+            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
+            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
+            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
+                local file_found_msg="        - Linked note file found: ${linked_note_path}"
+                debug_log "$file_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
+                local note_content=$(<"$linked_note_path")
+                if search_for_tags_in_content "Dynamic Subtask Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
+                    local found_in_file_msg="      Found '${current_search_tag}' in Dynamic Subtask Linked Note file. Checking for linked notes..."
+                    debug_log "$found_in_file_msg"
+                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
+                    
+                    # Check for linked notes in the found content and update dynamic list
+                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                    
+                    # Display updated considered list if new notes were discovered
+                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                    if [ -n "$newly_discovered" ]; then
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                        display_dynamic_considered_list "After finding ${current_search_tag} in subtask linked note" "$newly_discovered"
+                    else
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                    fi
+                    
+                    break
+                fi
+            else
+                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
+                debug_log "$file_not_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
+            fi
+            
+            # Also search in the raw collected note string itself
+            if search_for_tags_in_content "Dynamic Subtask (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
+                local found_in_ref_msg="      Found '${current_search_tag}' in Dynamic Subtask Linked Note reference string. Checking for linked notes..."
+                debug_log "$found_in_ref_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
+                
+                # Check for linked notes in the found content and update dynamic list
+                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                
+                # Display updated considered list if new notes were discovered
+                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                if [ -n "$newly_discovered" ]; then
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                    display_dynamic_considered_list "After finding ${current_search_tag} in subtask note reference" "$newly_discovered"
+                else
+                    if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                fi
+                
+                break
+            fi
+        done
+        
+        # --- Search Priority 4: Newly Discovered Notes ---
+        local discovered_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_DISCOVERED_NOTES for '${current_search_tag}'."
+        debug_log "$discovered_notes_search_msg"
+        DETAILED_TAG_SEARCH_LOGS+=("    ${discovered_notes_search_msg}")
+        for entry in "${DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]}"; do
+            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
+            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
+            local source_context=$(echo "$entry" | awk -F': ' '{print $2}')
+            
+            local resolve_msg="      - Attempting to resolve newly discovered note file: '${note_raw}'"
+            debug_log "$resolve_msg"
+            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
+            
+            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
+            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
+                local file_found_msg="        - Newly discovered note file found: ${linked_note_path}"
+                debug_log "$file_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
+                local note_content=$(<"$linked_note_path")
+                if search_for_tags_in_content "Newly Discovered Note (from file: '${note_raw}')" "$note_content" "${source_context}" "$linked_note_path" "discovered (file content)" "${current_search_tag}"; then
+                    local found_in_file_msg="      Found '${current_search_tag}' in Newly Discovered Note file. Checking for linked notes..."
+                    debug_log "$found_in_file_msg"
+                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
+                    
+                    # Check for linked notes in the found content and update dynamic list
+                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
+                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
+                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
+                    
+                    # Display updated considered list if new notes were discovered
+                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
+                    if [ -n "$newly_discovered" ]; then
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
+                    fi
+                        display_dynamic_considered_list "After finding ${current_search_tag} in newly discovered note" "$newly_discovered"
+                    else
+                        if [ "$QUICK_MODE" != "true" ]; then
+                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
+                    fi
+                    fi
+                    
+                    break
+                fi
+            else
+                local file_not_found_msg="        - ${RED}Newly discovered note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
+                debug_log "$file_not_found_msg"
+                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
+            fi
+        done
+        
+        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
+        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
+            continue
+        fi
+    done # End of TAG_DISPLAY_ORDER loop
+    
+    local exit_search_msg="Exiting find_tags_in_dynamic_consideration_list function."
+    debug_log "$exit_search_msg"
+    DETAILED_TAG_SEARCH_LOGS+=("  ${exit_search_msg}")
+    
+    # Final display of dynamic considered list
+    display_dynamic_considered_list "Final State" ""
+}
 
 # --- New Section: find_tags_in_consideration_list ---
 # MODIFIED: Now uses GLOBAL_COLLECTED_* arrays
@@ -824,8 +1291,8 @@ else
     debug_log "Skipping collection of overall considerations as no active routine or planner file missing."
 fi
 
-# Call the find_tags_in_consideration_list here to populate FOUND_TAGS_RESULTS
-find_tags_in_consideration_list
+# Call the find_tags_in_dynamic_consideration_list here to populate FOUND_TAGS_RESULTS
+find_tags_in_dynamic_consideration_list
 
 # Build the quick result content after tags are found
 build_quick_result
@@ -1015,6 +1482,24 @@ if [ "$QUICK_MODE" != "true" ]; then
             log_and_tee "
 ${BLUE}5.${section_5_counter}.2 Cleaned ${tag_display_name} is:${NC}" # L2 - BLUE
             draw_result_box "${tag_display_name}" "${cleaned_content}"
+            log_and_tee ""
+
+            # NEW: Check for linked notes for ALL tags (not just #CurrentCategoryOrAction)
+            log_and_tee "  ${CYAN}5.${section_5_counter}.3 Linked Note Check ---${NC}" # L4 - CYAN
+            # Use grep with -oP to extract all matches of [[...]]
+            linked_notes_found=$(echo "$found_content" | grep -oP '\[\[.*?\]\]')
+
+            if [ -n "$linked_notes_found" ]; then
+                log_and_tee "    ${GREEN}Yes, linked note(s) found in the ${tag_display_name} content.${NC}"
+                log_and_tee "    - Source Line: [${line_num}] ${found_content}"
+                # Read each found note into an array
+                readarray -t notes_array <<< "$linked_notes_found"
+                for note in "${notes_array[@]}"; do
+                    log_and_tee "    - Extracted Note: ${note}"
+                done
+            else
+                log_and_tee "    ${YELLOW}No, linked notes found in the ${tag_display_name} content.${NC}"
+            fi
             log_and_tee ""
 
         else

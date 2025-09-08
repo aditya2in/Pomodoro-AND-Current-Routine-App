@@ -36,6 +36,9 @@ SCRIPT_START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 # MODIFIED: New variable for the hardcoded Obsidian Vault Root
 OBSIDIAN_VAULT_ROOT="/home/aditya/obsidian"
 
+# Watcher PID file (to avoid multiple instances)
+WATCHER_PID_FILE="${SCRIPT_DIR}/watch_current_tags.pid"
+
 # Parse command-line arguments
 for arg in "$@"; do
     case "$arg" in
@@ -196,6 +199,53 @@ find_active_routine() {
     debug_log "Exiting find_active_routine function."
 }
 
+# --- NEW: Keep only one primary active routine (earliest start among overlaps) ---
+select_primary_active_routine() {
+    # If zero or one, nothing to do
+    if [ ${#GLOBAL_ACTIVE_ROUTINE_LINES[@]} -le 1 ]; then
+        return
+    fi
+    debug_log "Selecting a single primary routine from ${#GLOBAL_ACTIVE_ROUTINE_LINES[@]} overlaps."
+
+    local best_index=-1
+    local best_start_min=99999
+    local idx=0
+
+    for i in "${!GLOBAL_ACTIVE_ROUTINE_LINES[@]}"; do
+        local line_num="${GLOBAL_ACTIVE_ROUTINE_LINES[$i]}"
+        local line_content
+        line_content=$(sed -n "${line_num}p" "$PLANNER_FILE")
+        if [[ "$line_content" =~ ([0-9]{2}):([0-9]{2})[[:space:]]*-?[[:space:]]?([0-9]{2}):([0-9]{2}) ]]; then
+            local sh="${BASH_REMATCH[1]}"; local sm="${BASH_REMATCH[2]}"
+            local start_min=$((10#$sh * 60 + 10#$sm))
+            # Choose earliest start; tie-breaker: lowest line number
+            if (( start_min < best_start_min )); then
+                best_start_min=$start_min
+                best_index=$i
+            elif (( start_min == best_start_min )); then
+                if (( line_num < GLOBAL_ACTIVE_ROUTINE_LINES[$best_index] )); then
+                    best_index=$i
+                fi
+            fi
+        else
+            # If no time parsed (shouldn't happen), prefer earlier line
+            if (( best_index == -1 )) || (( line_num < GLOBAL_ACTIVE_ROUTINE_LINES[$best_index] )); then
+                best_index=$i
+            fi
+        fi
+        idx=$((idx+1))
+    done
+
+    if (( best_index >= 0 )); then
+        local keep_line="${GLOBAL_ACTIVE_ROUTINE_LINES[$best_index]}"
+        local keep_desc="${GLOBAL_ACTIVE_ROUTINE_DESCRIPTIONS[$best_index]}"
+        debug_log "Primary routine selected: line ${keep_line}, desc '${keep_desc}'. Pruning others."
+        GLOBAL_ACTIVE_ROUTINE_LINES=("$keep_line")
+        GLOBAL_ACTIVE_ROUTINE_DESCRIPTIONS=("$keep_desc")
+        QUICK_RESULT_CONTENT="$keep_desc"
+    fi
+}
+
 # --- New Helper Function: Get Leading Spaces ---
 get_leading_spaces() {
     local line="$1"
@@ -242,14 +292,144 @@ get_ultra_cleaned_tag_content() {
     # This should handle optional spaces around the colon and dash.
     temp_content=$(echo "${content}" | sed -E 's/^\[\[.*?\]\][[:space:]]*:[[:space:]]*-?[[:space:]]*//')
 
-    # 2. Remove leading checkbox pattern: "- [ ] "
+    # 2. Remove leading checkbox pattern: "- [ ] " or "- [x]"
     # This should handle optional spaces and the checkbox itself.
-    temp_content=$(echo "${temp_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[ ?\][[:space:]]*//')
+    temp_content=$(echo "${temp_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[[ xX]?\][[:space:]]*//')
 
     # 3. Remove the tag itself
     temp_content=$(echo "${temp_content}" | sed -E "s/[[:space:]]*${tag}//" | xargs)
 
     echo "${temp_content}"
+}
+
+# --- New Helper: Escape string for JSON (very basic) ---
+json_escape() {
+    echo -n "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# --- New Function: Write Final Considered JSON (single-file: planner) ---
+write_final_considered_json() {
+    local output_json_path="${SCRIPT_DIR}/final_considered.json"
+
+    if [ ! -f "$PLANNER_FILE" ]; then
+        echo '{"files":[],"found_tags":{}}' > "$output_json_path"
+        return
+    fi
+
+    # Build list of files to include: planner + any resolved linked note paths
+    declare -A SEEN_FILE_PATHS
+    local FILES_TO_INCLUDE=()
+    if [ -f "$PLANNER_FILE" ]; then
+        SEEN_FILE_PATHS["$PLANNER_FILE"]=1
+        FILES_TO_INCLUDE+=("$PLANNER_FILE")
+    fi
+
+    # Helper to extract PATH: from collected note strings and add if exists
+    add_file_if_exists() {
+        local entry="$1"
+        local p
+        p=$(echo "$entry" | sed -n 's/.*(PATH: \(.*\)).*/\1/p')
+        if [ -n "$p" ] && [ -f "$p" ] && [ -z "${SEEN_FILE_PATHS[$p]}" ]; then
+            SEEN_FILE_PATHS["$p"]=1
+            FILES_TO_INCLUDE+=("$p")
+        fi
+    }
+
+    # From routine linked notes
+    for entry in "${GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES[@]}"; do
+        add_file_if_exists "$entry"
+    done
+    # From subtask linked notes
+    for entry in "${GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES[@]}"; do
+        add_file_if_exists "$entry"
+    done
+
+    # Begin JSON
+    {
+        echo '{'
+        echo '  "files": ['
+        local first_file=true
+        for fpath in "${FILES_TO_INCLUDE[@]}"; do
+            if [ "$first_file" = true ]; then first_file=false; else echo ','; fi
+            echo '    {'
+            echo '      "path": '"\"$(json_escape "$fpath")\""','
+            echo '      "lines": ['
+            local first_line=true
+            local ln=0
+            while IFS= read -r line; do
+                ln=$((ln+1))
+                local indent=$(get_leading_spaces "$line")
+                local content_escaped=$(json_escape "$line")
+                if [ "$first_line" = true ]; then first_line=false; else echo ','; fi
+                echo -n '        {"line": '$ln', "indent": '$indent', "content": "'$content_escaped'"}'
+            done < "$fpath"
+            echo ''
+            echo '      ]'
+            echo '    }'
+        done
+        echo '  ],'
+
+        # found_tags object
+        echo '  "found_tags": {'
+        local first_tag=true
+        for key in "${TAG_DISPLAY_ORDER[@]}"; do
+            local val="${FOUND_TAGS_RESULTS[$key]}"
+            if [ -n "$val" ]; then
+                IFS='|' read -r _ _ fpath lnum _ <<< "$val"
+                # Only include if it points to the planner file
+                if [ "$fpath" = "$PLANNER_FILE" ]; then
+                    if [ "$first_tag" = true ]; then
+                        first_tag=false
+                    else
+                        echo ','
+                    fi
+                    echo -n '    '"\"$(json_escape "$key")\""': {"path": '"\"$(json_escape "$fpath")\""', "line": '$lnum'}'
+                fi
+            fi
+        done
+        echo ''
+        echo '  }'
+        echo '}'
+    } > "$output_json_path"
+
+    debug_log "Wrote final considered JSON to: $output_json_path"
+}
+
+# --- New Function: Start watcher if not already running ---
+start_watcher_if_needed() {
+    local watcher_sh="${SCRIPT_DIR}/watch_current_tags.sh"
+    if [ ! -x "$watcher_sh" ]; then
+        debug_log "Watcher script not executable or missing: $watcher_sh"
+        return
+    fi
+    if [ -f "$WATCHER_PID_FILE" ]; then
+        local pid
+        pid=$(cat "$WATCHER_PID_FILE" 2>/dev/null || echo "")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            debug_log "Watcher already running with PID $pid. Skipping start."
+            return
+        else
+            debug_log "Stale watcher PID file found. Removing."
+            rm -f "$WATCHER_PID_FILE" 2>/dev/null || true
+        fi
+    fi
+    nohup "$watcher_sh" >/dev/null 2>&1 & echo $! > "$WATCHER_PID_FILE"
+    debug_log "Watcher started with PID $(cat "$WATCHER_PID_FILE")"
+}
+
+# --- New Helper Function: Derive checkbox prefix from original content ---
+# Returns "[x] " for done, "[ ] " for undone, or empty if no checkbox present
+get_checkbox_prefix_from_content() {
+    local original_line="$1"
+    if echo "$original_line" | grep -qE '^[[:space:]]*-?[[:space:]]*\[[xX]\]'; then
+        echo "[x] "
+        return
+    fi
+    if echo "$original_line" | grep -qE '^[[:space:]]*-?[[:space:]]*\[[[:space:]]\]'; then
+        echo "[ ] "
+        return
+    fi
+    echo ""
 }
 
 # --- New Function: Process Routine Details and Consideration List ---
@@ -509,6 +689,14 @@ search_for_tags_in_content() {
             # The 'line_num' is already the correct line number, and 'content_text' is the line.
             actual_line_number_in_source_file="${line_num}"
             actual_found_line="${content_text}"
+        fi
+
+        # If the matched line is a checked task, skip (we only want undone)
+        if echo "$actual_found_line" | grep -qE '^[[:space:]]*-?[[:space:]]*\[[xX]\]'; then
+            local done_skip_msg="        - ${YELLOW}Match is checked [x]; skipping for '${target_tag}'.${NC}"
+            debug_log "$done_skip_msg"
+            DETAILED_TAG_SEARCH_LOGS+=("    ${done_skip_msg}")
+            return 1
         fi
 
         # Store the result in a structured format for detailed display
@@ -1246,7 +1434,7 @@ build_quick_result() {
         if [ -n "${FOUND_TAGS_RESULTS[$tag]}" ]; then
             IFS='|' read -r _ _ _ _ found_content <<< "${FOUND_TAGS_RESULTS[$tag]}"
             local cleaned_content=$(get_ultra_cleaned_tag_content "$tag" "$found_content")
-            quick_result_lines+=("${cleaned_content}") # Value without color
+            quick_result_lines+=("${cleaned_content}") # Value without color, no checkbox prefix
         else
             case "$tag" in
                 "#CurrentCategoryOrAction")
@@ -1282,6 +1470,8 @@ if [ ! -f "$PLANNER_FILE" ]; then
 else
     # Otherwise, find active routine(s) which populates current_routine_found and QUICK_RESULT_CONTENT
     find_active_routine
+    # Ensure only one active routine is kept (earliest start among overlaps)
+    select_primary_active_routine
 fi
 
 # Call the new collection function after active routines are found
@@ -1314,6 +1504,12 @@ log_and_tee "" # Add a blank line for separation
 if [ "$QUICK_MODE" = "true" ]; then
     log_and_tee "\n${YELLOW}Quick Result Generated At:${NC} ${GREEN}${SCRIPT_START_TIME}${NC}"
 fi
+
+# Write final considered JSON (single-file planner) for the watcher
+write_final_considered_json
+
+# Auto-run watcher with PID guard
+start_watcher_if_needed
 
 # 2. SCRIPT INFORMATION
 if [ "$QUICK_MODE" != "true" ]; then
@@ -1470,13 +1666,13 @@ if [ "$QUICK_MODE" != "true" ]; then
                                # Using a variable for temporary cleanup.
                                # The 'declare' statement at line 835 also ensures it's properly handled.
             if [ "$tag_to_display" = "#CurrentCategoryOrAction" ]; then
-                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*- ?\[ ?\][[:space:]]*//; s/[[:space:]]*#CurrentCategoryOrAction//' | xargs)
+                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[[ xX]?\][[:space:]]*//; s/[[:space:]]*#CurrentCategoryOrAction//' | xargs)
             elif [ "$tag_to_display" = "#CurrentTask" ]; then
-                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*- ?\[ ?\][[:space:]]*//; s/[[:space:]]*#CurrentTask//' | xargs)
+                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[[ xX]?\][[:space:]]*//; s/[[:space:]]*#CurrentTask//' | xargs)
             elif [ "$tag_to_display" = "#CurrentSubTask" ]; then
-                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*- ?\[ ?\][[:space:]]*//; s/[[:space:]]*#CurrentSubTask//' | xargs)
+                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[[ xX]?\][[:space:]]*//; s/[[:space:]]*#CurrentSubTask//' | xargs)
             elif [ "$tag_to_display" = "#CurrentMiniTask" ]; then
-                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*- ?\[ ?\][[:space:]]*//; s/[[:space:]]*#CurrentMiniTask//' | xargs)
+                cleaned_content=$(echo "${found_content}" | sed -E 's/^[[:space:]]*-?[[:space:]]?\[[ xX]?\][[:space:]]*//; s/[[:space:]]*#CurrentMiniTask//' | xargs)
             fi
 
             log_and_tee "

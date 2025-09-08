@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Renders the config file as a boxed table with grouped sections
+# Renders the  config file as a boxed table with grouped sections
 render_config_table_boxed() {
     local width_key=32
     local width_val=52
@@ -2274,6 +2274,8 @@ compute_new_day_context() {
 }
 
 cmd_quick_start() {
+    # NEW: Clean up stale reminder lock files on start
+    rm -f "$POMODORO_DIR/.unscheduled_reminder.lock" "$POMODORO_DIR/.unscheduled_reminder.ts"
     APP_NAME="Pomodoro Sentinel"
     read_state
     show_welcome_tui

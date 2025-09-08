@@ -1,8 +1,8 @@
 {
-  "status": "Stopped",
-  "session_type": "None",
-  "total_pomodoro_cycles_today": 0,
-  "current_session_in_cycle": 0,
+  "status": "Running",
+  "session_type": "Work",
+  "total_pomodoro_cycles_today": 1,
+  "current_session_in_cycle": 1,
   "last_run_date": "2025-09-08",
   "total_focus_seconds_today": 0
 }

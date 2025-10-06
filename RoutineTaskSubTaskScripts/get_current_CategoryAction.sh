@@ -956,314 +956,54 @@ collect_all_considerations_from_routines() {
 
 
 # --- New Function: Dynamic Tag Search with Considered List Updates ---
-find_tags_in_dynamic_consideration_list() {
-    debug_log "Entering find_tags_in_dynamic_consideration_list function (DYNAMIC VERSION)."
-    DETAILED_TAG_SEARCH_LOGS=() # Clear logs for this run
-    
-    # Initialize dynamic considered list
-    initialize_dynamic_considered_list
-    display_dynamic_considered_list "Initial State" ""
-    
-    # MODIFIED: Loop through all defined tags in the specified display order
-    for current_search_tag in "${TAG_DISPLAY_ORDER[@]}"; do
-        TAG_FOUND_STATUS["$current_search_tag"]="false"
-        FOUND_TAGS_RESULTS["$current_search_tag"]=""
-        
-        local start_search_msg="  Starting DYNAMIC search for tag: ${current_search_tag}"
-        debug_log "$start_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("  ${start_search_msg}")
-        
-        # --- Search Priority 1: Dynamic Subtasks ---
-        local subtasks_search_msg="    Searching in DYNAMIC_CONSIDERED_SUBTASKS for '${current_search_tag}'."
-        debug_log "$subtasks_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${subtasks_search_msg}")
-        for entry in "${DYNAMIC_CONSIDERED_SUBTASKS[@]}"; do
-            local line_num_info=$(echo "$entry" | cut -d':' -f1)
-            local routine_name=$(echo "$entry" | cut -d':' -f2 | xargs)
-            local subtask_content=$(echo "$entry" | sed -E 's/^[0-9]+:[^:]+:[[:space:]]*(.*)$/\1/')
-            
-            # Call search_for_tags_in_content with the detailed logging
-            if search_for_tags_in_content "Dynamic Subtask" "$subtask_content" "${routine_name}" "$PLANNER_FILE" "${line_num_info}" "${current_search_tag}"; then
-                local found_in_subtask_msg="      Found '${current_search_tag}' in Dynamic Subtask. Checking for linked notes..."
-                debug_log "$found_in_subtask_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_subtask_msg}")
-                
-                # Check for linked notes in the found content and update dynamic list
-                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                
-                # Display updated considered list if new notes were discovered
-                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                if [ -n "$newly_discovered" ]; then
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                    fi
-                    display_dynamic_considered_list "After finding ${current_search_tag} in subtask" "$newly_discovered"
-                else
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                    fi
-                fi
-                
-                break # Exit inner loop for this tag, proceed to next tag in TAG_DISPLAY_ORDER
-            fi
-        done
-        # If tag was found in subtasks, continue to the next tag in TAG_DISPLAY_ORDER
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
-        
-        # --- Search Priority 2: Dynamic Routine Linked Notes ---
-        local routine_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES for '${current_search_tag}'."
-        debug_log "$routine_notes_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${routine_notes_search_msg}")
-        for entry in "${DYNAMIC_CONSIDERED_ROUTINE_LINKED_NOTES[@]}"; do
-            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
-            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
-            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
-            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
-            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
-            
-            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
-            debug_log "$resolve_msg"
-            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
-            
-            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
-            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
-            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
-                local file_found_msg="        - Linked note file found: ${linked_note_path}"
-                debug_log "$file_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
-                local note_content=$(<"$linked_note_path")
-                if search_for_tags_in_content "Dynamic Routine Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
-                    local found_in_file_msg="      Found '${current_search_tag}' in Dynamic Routine Linked Note file. Checking for linked notes..."
-                    debug_log "$found_in_file_msg"
-                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
-                    
-                    # Check for linked notes in the found content and update dynamic list
-                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                    
-                    # Display updated considered list if new notes were discovered
-                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                    if [ -n "$newly_discovered" ]; then
-                        if [ "$QUICK_MODE" != "true" ]; then
-                            if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                        fi
-                        display_dynamic_considered_list "After finding ${current_search_tag} in routine linked note" "$newly_discovered"
-                    else
-                        if [ "$QUICK_MODE" != "true" ]; then
-                            if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                        fi
-                    fi
-                    
-                    break
-                fi
-            else
-                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
-                debug_log "$file_not_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
-            fi
-            
-            # Also search in the raw collected note string itself
-            if search_for_tags_in_content "Dynamic Routine Name (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
-                local found_in_ref_msg="      Found '${current_search_tag}' in Dynamic Routine Linked Note reference string. Checking for linked notes..."
-                debug_log "$found_in_ref_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
-                
-                # Check for linked notes in the found content and update dynamic list
-                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                
-                # Display updated considered list if new notes were discovered
-                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                if [ -n "$newly_discovered" ]; then
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                    display_dynamic_considered_list "After finding ${current_search_tag} in routine note reference" "$newly_discovered"
-                else
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                fi
-                
-                break
-            fi
-        done
-        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
-        
-        # --- Search Priority 3: Dynamic Subtask Linked Notes ---
-        local subtask_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES for '${current_search_tag}'."
-        debug_log "$subtask_notes_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${subtask_notes_search_msg}")
-        for entry in "${DYNAMIC_CONSIDERED_SUBTASK_LINKED_NOTES[@]}"; do
-            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
-            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
-            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
-            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
-            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
-            
-            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
-            debug_log "$resolve_msg"
-            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
-            
-            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
-            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
-            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
-                local file_found_msg="        - Linked note file found: ${linked_note_path}"
-                debug_log "$file_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
-                local note_content=$(<"$linked_note_path")
-                if search_for_tags_in_content "Dynamic Subtask Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
-                    local found_in_file_msg="      Found '${current_search_tag}' in Dynamic Subtask Linked Note file. Checking for linked notes..."
-                    debug_log "$found_in_file_msg"
-                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
-                    
-                    # Check for linked notes in the found content and update dynamic list
-                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                    
-                    # Display updated considered list if new notes were discovered
-                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                    if [ -n "$newly_discovered" ]; then
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                        display_dynamic_considered_list "After finding ${current_search_tag} in subtask linked note" "$newly_discovered"
-                    else
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                    fi
-                    
-                    break
-                fi
-            else
-                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
-                debug_log "$file_not_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
-            fi
-            
-            # Also search in the raw collected note string itself
-            if search_for_tags_in_content "Dynamic Subtask (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
-                local found_in_ref_msg="      Found '${current_search_tag}' in Dynamic Subtask Linked Note reference string. Checking for linked notes..."
-                debug_log "$found_in_ref_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
-                
-                # Check for linked notes in the found content and update dynamic list
-                local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                
-                # Display updated considered list if new notes were discovered
-                local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                if [ -n "$newly_discovered" ]; then
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                    display_dynamic_considered_list "After finding ${current_search_tag} in subtask note reference" "$newly_discovered"
-                else
-                    if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                fi
-                
-                break
-            fi
-        done
-        
-        # --- Search Priority 4: Newly Discovered Notes ---
-        local discovered_notes_search_msg="    Searching in DYNAMIC_CONSIDERED_DISCOVERED_NOTES for '${current_search_tag}'."
-        debug_log "$discovered_notes_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${discovered_notes_search_msg}")
-        for entry in "${DYNAMIC_CONSIDERED_DISCOVERED_NOTES[@]}"; do
-            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
-            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
-            local source_context=$(echo "$entry" | awk -F': ' '{print $2}')
-            
-            local resolve_msg="      - Attempting to resolve newly discovered note file: '${note_raw}'"
-            debug_log "$resolve_msg"
-            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
-            
-            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
-            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
-                local file_found_msg="        - Newly discovered note file found: ${linked_note_path}"
-                debug_log "$file_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
-                local note_content=$(<"$linked_note_path")
-                if search_for_tags_in_content "Newly Discovered Note (from file: '${note_raw}')" "$note_content" "${source_context}" "$linked_note_path" "discovered (file content)" "${current_search_tag}"; then
-                    local found_in_file_msg="      Found '${current_search_tag}' in Newly Discovered Note file. Checking for linked notes..."
-                    debug_log "$found_in_file_msg"
-                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
-                    
-                    # Check for linked notes in the found content and update dynamic list
-                    local found_content="${FOUND_TAGS_RESULTS[$current_search_tag]}"
-                    IFS='|' read -r _ _ _ _ actual_content <<< "$found_content"
-                    add_discovered_notes_to_dynamic_list "$actual_content" "Tag ${current_search_tag} Result"
-                    
-                    # Display updated considered list if new notes were discovered
-                    local newly_discovered=$(echo "$actual_content" | grep -oP '\[\[.*?\]\]' | head -1)
-                    if [ -n "$newly_discovered" ]; then
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${GREEN}🎯 DISCOVERY: Found linked note '${newly_discovered}' in ${current_search_tag} result!${NC}"
-                    fi
-                        display_dynamic_considered_list "After finding ${current_search_tag} in newly discovered note" "$newly_discovered"
-                    else
-                        if [ "$QUICK_MODE" != "true" ]; then
-                        log_and_tee "${YELLOW}ℹ️ No linked notes found in ${current_search_tag} result${NC}"
-                    fi
-                    fi
-                    
-                    break
-                fi
-            else
-                local file_not_found_msg="        - ${RED}Newly discovered note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
-                debug_log "$file_not_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
-            fi
-        done
-        
-        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
-    done # End of TAG_DISPLAY_ORDER loop
-    
-    local exit_search_msg="Exiting find_tags_in_dynamic_consideration_list function."
-    debug_log "$exit_search_msg"
-    DETAILED_TAG_SEARCH_LOGS+=("  ${exit_search_msg}")
-    
-    # Final display of dynamic considered list
-    display_dynamic_considered_list "Final State" ""
-}
-
-# --- New Section: find_tags_in_consideration_list ---
-# MODIFIED: Now uses GLOBAL_COLLECTED_* arrays
-# MODIFIED: Changed search order to: 1. Subtasks, 2. Routine Linked Notes, 3. Subtask Linked Notes
-# MODIFIED: Added specific tag order search based on TAG_DISPLAY_ORDER
-# MODIFIED: Implements "first match wins" logic for each tag
-# MODIFIED: Adds detailed logs to DETAILED_TAG_SEARCH_LOGS
 find_tags_in_consideration_list() {
-    debug_log "Entering find_tags_in_consideration_list function (MODIFIED for enhanced debug output, 'first match wins' logic)."
+    debug_log "Entering find_tags_in_consideration_list function (FINAL REFACTORED)."
     DETAILED_TAG_SEARCH_LOGS=() # Clear logs for this run
 
-    # MODIFIED: Loop through all defined tags in the specified display order
+    # --- STAGE 1: Recursively Collect All Searchable Content ---
+    declare -a all_searchable_items
+    declare -A visited_notes
+
+    # Add subtasks from the daily planner
+    for entry in "${GLOBAL_COLLECTED_SUBTASKS[@]}"; do
+        all_searchable_items+=("subtask|$entry")
+    done
+
+    # Recursive function to find all linked note paths
+    collect_recursive_notes() {
+        local note_path="$1"
+        if [ -n "${visited_notes["$note_path"]}" ] || [ ! -f "$note_path" ]; then
+            return
+        fi
+        visited_notes["$note_path"]=1
+        all_searchable_items+=("note|$note_path")
+        debug_log "    Collected note for searching: $note_path"
+
+        local file_content=$(<"$note_path")
+        local raw_links=$(echo "$file_content" | grep -oP '\[\[.*?\]\]')
+        if [ -n "$raw_links" ]; then
+            readarray -t links_array <<< "$raw_links"
+            for link in "${links_array[@]}"; do
+                local new_note_path=$(resolve_obsidian_note_path "$link" 2>/dev/null)
+                if [ -n "$new_note_path" ]; then
+                    collect_recursive_notes "$new_note_path"
+                fi
+            done
+        fi
+    }
+
+    # Start recursion from initial linked notes
+    debug_log "Starting recursive collection of all linked notes."
+    for entry in "${GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES[@]}" "${GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES[@]}"; do
+        local note_raw=$(echo "$entry" | grep -oP '\[\[.*?\]\]' | head -n 1)
+        local initial_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
+        if [ -n "$initial_note_path" ]; then
+            collect_recursive_notes "$initial_note_path"
+        fi
+    done
+    debug_log "Finished recursive collection. Total searchable items: ${#all_searchable_items[@]}"
+
+    # --- STAGE 2: Search for Tags in the Collected Content ---
     for current_search_tag in "${TAG_DISPLAY_ORDER[@]}"; do
         TAG_FOUND_STATUS["$current_search_tag"]="false"
         FOUND_TAGS_RESULTS["$current_search_tag"]=""
@@ -1272,122 +1012,31 @@ find_tags_in_consideration_list() {
         debug_log "$start_search_msg"
         DETAILED_TAG_SEARCH_LOGS+=("  ${start_search_msg}")
 
-        # --- Search Priority 1: Collected Subtasks ---
-        local subtasks_search_msg="    Searching in GLOBAL_COLLECTED_SUBTASKS for '${current_search_tag}'."
-        debug_log "$subtasks_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${subtasks_search_msg}")
-        for entry in "${GLOBAL_COLLECTED_SUBTASKS[@]}"; do
-            local line_num_info=$(echo "$entry" | cut -d':' -f1)
-            local routine_name=$(echo "$entry" | cut -d':' -f2 | xargs)
-            local subtask_content=$(echo "$entry" | sed -E 's/^[0-9]+:[^:]+:[[:space:]]*(.*)$/\1/')
+        # The order of all_searchable_items is subtasks first, then notes.
+        # This maintains the search priority.
+        for item in "${all_searchable_items[@]}"; do
+            IFS='|' read -r item_type item_data <<< "$item"
 
-            # Call search_for_tags_in_content with the detailed logging
-            if search_for_tags_in_content "Subtask" "$subtask_content" "${routine_name}" "$PLANNER_FILE" "${line_num_info}" "${current_search_tag}"; then
-                local found_in_subtask_msg="      Found '${current_search_tag}' in Subtask. Exiting search for this tag in other sources."
-                debug_log "$found_in_subtask_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_subtask_msg}")
-                break # Exit inner loop for this tag, proceed to next tag in TAG_DISPLAY_ORDER
-            fi
-        done
-        # If tag was found in subtasks, continue to the next tag in TAG_DISPLAY_ORDER
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
+            if [ "$item_type" = "subtask" ]; then
+                local line_num_info=$(echo "$item_data" | cut -d':' -f1)
+                local routine_name=$(echo "$item_data" | cut -d':' -f2 | xargs)
+                local subtask_content=$(echo "$item_data" | sed -E 's/^[0-9]+:[^:]+:[[:space:]]*(.*)$/\1/')
 
-        # --- Search Priority 2: Collected Routine Linked Notes ---
-        local routine_notes_search_msg="    Searching in GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES for '${current_search_tag}'."
-        debug_log "$routine_notes_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${routine_notes_search_msg}")
-        for entry in "${GLOBAL_COLLECTED_ROUTINE_LINKED_NOTES[@]}"; do
-            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
-            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
-            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
-            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
-            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
-
-            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
-            debug_log "$resolve_msg"
-            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
-
-            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
-            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
-            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
-                local file_found_msg="        - Linked note file found: ${linked_note_path}"
-                debug_log "$file_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
-                local note_content=$(<"$linked_note_path")
-                if search_for_tags_in_content "Routine Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
-                    local found_in_file_msg="      Found '${current_search_tag}' in Routine Linked Note file. Exiting search for this tag in other sources."
-                    debug_log "$found_in_file_msg"
-                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
-                    break
+                if search_for_tags_in_content "Subtask" "$subtask_content" "${routine_name}" "$PLANNER_FILE" "${line_num_info}" "${current_search_tag}"; then
+                    debug_log "      Found '${current_search_tag}' in Subtask. Stopping search for this tag."
+                    break # First match wins
                 fi
-            else
-                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
-                debug_log "$file_not_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
-            fi
+            else # note
+                local note_path="$item_data"
+                local note_content=$(<"$note_path")
 
-            # Also search in the raw collected note string itself
-            if search_for_tags_in_content "Routine Name (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
-                local found_in_ref_msg="      Found '${current_search_tag}' in Routine Linked Note reference string. Exiting search for this tag in other sources."
-                debug_log "$found_in_ref_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
-                break
-            fi
-        done
-        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
-
-        # --- Search Priority 3: Collected Subtask Linked Notes ---
-        local subtask_notes_search_msg="    Searching in GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES for '${current_search_tag}'."
-        debug_log "$subtask_notes_search_msg"
-        DETAILED_TAG_SEARCH_LOGS+=("    ${subtask_notes_search_msg}")
-        for entry in "${GLOBAL_COLLECTED_SUBTASK_LINKED_NOTES[@]}"; do
-            local routine_part=$(echo "$entry" | awk -F': 🔗 ' '{print $1}')
-            local note_part=$(echo "$entry" | awk -F': 🔗 ' '{print $2}')
-            local line_num_info=$(echo "$routine_part" | cut -d':' -f1)
-            local routine_name=$(echo "$routine_part" | cut -d':' -f2- | xargs)
-            local note_raw=$(echo "$note_part" | grep -oP '\[\[.*?\]\]' | head -n 1)
-
-            local resolve_msg="      - Attempting to resolve linked note file: '${note_raw}'"
-            debug_log "$resolve_msg"
-            DETAILED_TAG_SEARCH_LOGS+=("    ${resolve_msg}")
-
-            # MODIFIED: Redirect stderr of resolve_obsidian_note_path to /dev/null
-            local linked_note_path=$(resolve_obsidian_note_path "$note_raw" 2>/dev/null)
-            if [ -n "$linked_note_path" ] && [ -f "$linked_note_path" ]; then
-                local file_found_msg="        - Linked note file found: ${linked_note_path}"
-                debug_log "$file_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_found_msg}")
-                local note_content=$(<"$linked_note_path")
-                if search_for_tags_in_content "Subtask Linked Note (from file: '${note_raw}')" "$note_content" "${routine_name}" "$linked_note_path" "${line_num_info} (file content)" "${current_search_tag}"; then
-                    local found_in_file_msg="      Found '${current_search_tag}' in Subtask Linked Note file. Exiting search for this tag in other sources."
-                    debug_log "$found_in_file_msg"
-                    DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_file_msg}")
-                    break
+                if search_for_tags_in_content "Linked Note" "$note_content" "${GLOBAL_ACTIVE_ROUTINE_DESCRIPTIONS[0]}" "$note_path" "(file content)" "${current_search_tag}"; then
+                    debug_log "      Found '${current_search_tag}' in Linked Note ($note_path). Stopping search for this tag."
+                    break # First match wins
                 fi
-            else
-                local file_not_found_msg="        - ${RED}Linked note file NOT found or not a regular file for '${note_raw}'. Path: '${linked_note_path}'.${NC}"
-                debug_log "$file_not_found_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${file_not_found_msg}")
-            fi
-
-            # Also search in the raw collected note string itself
-            if search_for_tags_in_content "Subtask (via collected note reference: '${note_raw}')" "$entry" "${routine_name}" "$PLANNER_FILE" "${line_num_info} (note reference string)" "${current_search_tag}"; then
-                local found_in_ref_msg="      Found '${current_search_tag}' in Subtask Linked Note reference string. Exiting search for this tag in other sources."
-                debug_log "$found_in_ref_msg"
-                DETAILED_TAG_SEARCH_LOGS+=("    ${found_in_ref_msg}")
-                break
             fi
         done
-        # If tag was found, continue to the next tag in TAG_DISPLAY_ORDER (redundant but safe)
-        if [ "${TAG_FOUND_STATUS[$current_search_tag]}" = "true" ]; then
-            continue
-        fi
-    done # End of TAG_DISPLAY_ORDER loop
+    done
 
     local exit_search_msg="Exiting find_tags_in_consideration_list function."
     debug_log "$exit_search_msg"
@@ -1481,8 +1130,8 @@ else
     debug_log "Skipping collection of overall considerations as no active routine or planner file missing."
 fi
 
-# Call the find_tags_in_dynamic_consideration_list here to populate FOUND_TAGS_RESULTS
-find_tags_in_dynamic_consideration_list
+# Call the find_tags_in_consideration_list here to populate FOUND_TAGS_RESULTS
+find_tags_in_consideration_list
 
 # Build the quick result content after tags are found
 build_quick_result
